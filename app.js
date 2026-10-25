@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=38';
+import { DEFAULT_DATA } from './data.js?v=39';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -18,7 +18,7 @@ function tourSteps(){
     {tab:'today',title:'Welcome to PomFit',body:`Hi, I’m ${pomName()}. I’ll show you the basics. PomFit keeps shared household planning together while your Profile, workouts, notes and preferences stay personal.`},
     {tab:'profile',title:'1. Build My Profile',body:'Start here. Add age, height and weight; choose a diet; list foods you like or dislike; set fasting and meal times; pick training goals, sports and equipment. If you use Peloton, Tonal, Hydrow, iFIT or another structured program, enter the program and its usual days so PomFit schedules around it.'},
     {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household so everyone stays synchronized.'},
-    {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” for a personal meal. Dinner changes are labeled for the whole household. PomFit remembers rejected personal meals so it can offer something different.'},
+    {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” when you simply want something different today. It does not mark the meal as disliked. Dinner changes are labeled for the whole household.'},
     {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority so PomFit does not stack conflicting leg strength or HIIT on top of them.'},
     {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Your Profile, workout completion, measurements and private notes are personal to your signed-in account.'},
     {tab:'today',title:'6. Ask for a little more food',body:'If you are still hungry, use “I’m still hungry — what can I eat?” PomFit suggests a small add-on that respects your diet, disliked foods and fasting window.'},
@@ -259,10 +259,45 @@ function foodCompatibility(food,diet){
 function workoutChecks(){return personal?.settings?.workout_checks||{};}
 function barkEnabled(){return personal?.settings?.bark_reminder_enabled===true;}
 function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
+function alcoholPlans(){const x=personal?.settings?.alcohol_plans;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function alcoholCap(){const n=Number(personal?.settings?.alcohol_daily_cap);return Number.isFinite(n)?Math.max(0,Math.min(2,n)):1;}
+const ALCOHOL_DEFAULTS={cocktail:{amount:6,abv:15,mixer:'regular'},champagne:{amount:5,abv:12,mixer:'none'},wine:{amount:5,abv:12,mixer:'none'},beer:{amount:12,abv:5,mixer:'none'},liquor:{amount:1.5,abv:40,mixer:'zero'}};
+function alcoholTypeLabel(t){return({cocktail:'Cocktail',champagne:'Champagne / sparkling wine',wine:'Wine',beer:'Beer',liquor:'Liquor / spirits'}[t]||'Drink');}
+function standardDrinksFor(amount,abv){const oz=Number(amount),pct=Number(abv);if(!Number.isFinite(oz)||!Number.isFinite(pct)||oz<=0||pct<=0)return 0;return (oz*(pct/100))/0.6;}
+function maxOuncesForCap(cap,abv){const c=Number(cap),pct=Number(abv);if(!Number.isFinite(c)||!Number.isFinite(pct)||c<=0||pct<=0)return 0;return (c*0.6)/(pct/100);}
+function drinkMealAdvice(plan){
+  const type=plan?.type||'wine',amount=Number(plan?.amount)||0,abv=Number(plan?.abv)||0,cap=Number(plan?.cap ?? alcoholCap());
+  const std=standardDrinksFor(amount,abv),maxOz=maxOuncesForCap(cap,abv);
+  const mixer=plan?.mixer||'none',diet=dietStyle(),over=cap===0?std>0:std>cap+0.01;
+  let adjust='Keep the planned protein and non-starchy vegetables. ';
+  if(type==='beer')adjust+='If you have the beer, skip or reduce optional bread, bun, rice, potato, dessert, or another starch at that meal.';
+  else if(type==='cocktail')adjust+=mixer==='regular'?'If the cocktail uses juice, syrup, tonic, or another sweet mixer, skip dessert and reduce or omit the meal’s optional starch.':'With a zero-calorie mixer, keep protein and vegetables and trim an optional starch, dessert, or added fat rather than shrinking the protein serving.';
+  else if(type==='champagne'||type==='wine')adjust+='Keep protein and vegetables; reduce or skip an optional starch/dessert rather than cutting the main protein.';
+  else adjust+='Plain spirits or a zero-calorie mixer add little carbohydrate, but alcohol still adds energy; trim an optional starch, dessert, or added fat rather than protein.';
+  if((diet==='keto'||diet==='lowcarb')&&(type==='beer'||(type==='cocktail'&&mixer==='regular')))adjust+=' This choice is relatively harder to fit into a low-carb/keto day; a dry wine/sparkling wine or spirit with a zero-calorie mixer is usually easier to accommodate.';
+  const limitText=cap<=0?'Your PomFit planning ceiling is 0 standard drinks.':`At ${abv||'?'}% ABV, a ${amount||'?'} oz serving is about ${std.toFixed(2)} standard drinks. With a ${cap}-drink planning ceiling, about ${maxOz.toFixed(1)} oz would equal that ceiling.`;
+  const status=over?'This serving is above your selected planning ceiling.':'This serving is within your selected planning ceiling.';
+  return `${limitText} ${status} ${adjust} Do not use alcohol calories as a substitute for protein, vegetables, or hydration.`;
+}
+function renderDrinkPlanner(i){
+  const existing=alcoholPlans()[String(i)]||{},type=existing.type||'wine',def=ALCOHOL_DEFAULTS[type]||ALCOHOL_DEFAULTS.wine;
+  const amount=existing.amount??def.amount,abv=existing.abv??def.abv,mixer=existing.mixer??def.mixer,cap=existing.cap??alcoholCap(),kind=existing.kind||'',saved=!!existing.saved_at;
+  const summary=saved?`${alcoholTypeLabel(type)}${kind?' — '+kind:''}`:'Add a drink',advice=saved?drinkMealAdvice({...existing,cap}):'';
+  return `<details class="drink-planner" ${saved?'open':''}><summary>🍷 ${esc(summary)}</summary><div class="drink-grid">
+  <label class="small">Type<select class="search" data-drink-type="${i}"><option value="cocktail" ${type==='cocktail'?'selected':''}>Cocktail</option><option value="champagne" ${type==='champagne'?'selected':''}>Champagne / sparkling</option><option value="wine" ${type==='wine'?'selected':''}>Wine</option><option value="beer" ${type==='beer'?'selected':''}>Beer</option><option value="liquor" ${type==='liquor'?'selected':''}>Liquor / spirits</option></select></label>
+  <label class="small">What kind?<input class="search" data-drink-kind="${i}" value="${esc(kind)}" placeholder="e.g. Cabernet, IPA, martini, bourbon"></label>
+  <label class="small">Serving size (oz)<input class="search" type="number" min="0" step=".1" data-drink-amount="${i}" value="${esc(amount)}"></label>
+  <label class="small">ABV %<input class="search" type="number" min="0" max="100" step=".1" data-drink-abv="${i}" value="${esc(abv)}"></label>
+  <label class="small">Mixer<select class="search" data-drink-mixer="${i}"><option value="none" ${mixer==='none'?'selected':''}>None / not applicable</option><option value="zero" ${mixer==='zero'?'selected':''}>Zero-calorie / soda water</option><option value="regular" ${mixer==='regular'?'selected':''}>Juice / syrup / tonic / sweet mixer</option></select></label>
+  <label class="small">Personal planning ceiling<select class="search" data-drink-cap="${i}"><option value="0" ${Number(cap)===0?'selected':''}>0 standard drinks</option><option value="1" ${Number(cap)===1?'selected':''}>1 standard drink</option><option value="2" ${Number(cap)===2?'selected':''}>2 standard drinks</option></select></label>
+  </div><p class="small">U.S. standard-drink math uses serving size and ABV. Cocktails can contain more than one standard drink, so edit both fields if stronger or larger than the default.</p>
+  <p class="small">General CDC reference: on days alcohol is consumed, up to 1 drink/day for women and up to 2/day for men; less is better. Some people should not drink at all.</p>
+  <button class="secondary" data-save-drink="${i}">Calculate & save drink</button>${saved?`<button class="ghost" data-clear-drink="${i}">Remove drink</button>`:''}<div class="drink-result" data-drink-result="${i}">${esc(advice)}</div></details>`;
+}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=38');
+    const audio=new Audio('./Gizmo-bark.mp3?v=39');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -904,7 +939,8 @@ function dayCard(d,i){
       w=`<div class="work">${box}<b>Workout:</b> ${esc(workout)}</div>`;
     }
   }
-  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i))}</div></section>`;
+  const drink=ui.view===myView()?renderDrinkPlanner(i):'';
+  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${drink}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i))}</div></section>`;
 }
 function renderToday(){
   const n=personal?.notes?.free_text||'',summary=profileSummaryText();
@@ -943,7 +979,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v38<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v39<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -953,6 +989,13 @@ function render(){
   $('#workoutToggle').checked=workoutShown(ui.view);
   const pages={today:renderToday,week:renderWeek,prep:renderPrep,grocery:renderGrocery,season:renderSeason,workout:renderWorkout,profile:renderProfile,account:renderAccount};
   $('#content').innerHTML=pages[ui.tab]();bindDynamic();
+}
+async function saveSettingAtomic(key,value){
+  const r=await supabase.rpc('save_my_setting',{p_key:key,p_value:value});
+  if(r.error)throw r.error;
+  const row=Array.isArray(r.data)?r.data[0]:r.data;
+  if(row)personal=row;
+  return row;
 }
 async function saveProfileAtomic(next){
   const vitalRecord={
@@ -1066,13 +1109,47 @@ function bindDynamic(){
       render();
     }catch(e){syncMsg('Meal swap failed');}
   });
+  $('[data-drink-type]').forEach(sel=>sel.onchange=e=>{
+    const i=e.target.dataset.drinkType,def=ALCOHOL_DEFAULTS[e.target.value]||ALCOHOL_DEFAULTS.wine;
+    const amount=$('[data-drink-amount="'+i+'"]'),abv=$('[data-drink-abv="'+i+'"]'),mixer=$('[data-drink-mixer="'+i+'"]');
+    if(amount)amount.value=def.amount;
+    if(abv)abv.value=def.abv;
+    if(mixer)mixer.value=def.mixer;
+  });
+  $('[data-save-drink]').forEach(btn=>btn.onclick=async()=>{
+    const i=btn.dataset.saveDrink;
+    const type=$('[data-drink-type="'+i+'"]')?.value||'wine';
+    const plan={
+      type,
+      kind:$('[data-drink-kind="'+i+'"]')?.value.trim()||'',
+      amount:Number($('[data-drink-amount="'+i+'"]')?.value)||0,
+      abv:Number($('[data-drink-abv="'+i+'"]')?.value)||0,
+      mixer:$('[data-drink-mixer="'+i+'"]')?.value||'none',
+      cap:Number($('[data-drink-cap="'+i+'"]')?.value)||0,
+      saved_at:new Date().toISOString()
+    };
+    const plans={...alcoholPlans(),[String(i)]:plan};
+    try{
+      await saveSettingAtomic('alcohol_plans',plans);
+      await saveSettingAtomic('alcohol_daily_cap',plan.cap);
+      render();
+    }catch(e){
+      const out=$('[data-drink-result="'+i+'"]');
+      if(out)out.textContent='Could not save drink plan: '+e.message;
+    }
+  });
+  $('[data-clear-drink]').forEach(btn=>btn.onclick=async()=>{
+    const i=btn.dataset.clearDrink,plans={...alcoholPlans()};
+    delete plans[String(i)];
+    try{await saveSettingAtomic('alcohol_plans',plans);render();}catch(e){syncMsg('Drink save failed');}
+  });
   if($('#profileWorkout'))$('#profileWorkout').onchange=async e=>{profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);render();};
   if($('#pomNameInput'))$('#pomNameInput').onchange=async e=>{const name=(e.target.value.trim()||'Gizmo').slice(0,20);e.target.value=name;await savePersonal({settings:{...(personal.settings||{}),pom_name:name}});render();};
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
   if($('#replayTourBtn'))$('#replayTourBtn').onclick=()=>startTour(true);
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=38';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=39';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -1091,7 +1168,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=38',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=39',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
