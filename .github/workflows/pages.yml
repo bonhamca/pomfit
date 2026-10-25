@@ -25,6 +25,23 @@ jobs:
         uses: actions/checkout@v6
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Fetch real Pomeranian bark (CC0)
+        shell: bash
+        run: |
+          set +e
+          API_JSON="$(curl -fsSL --retry 2 'https://freesound.org/api/sounds/608732')"
+          BARK_URL="$(printf '%s' "$API_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("preview-hq-mp3") or d.get("preview-lq-mp3") or "")' 2>/dev/null)"
+          if [ -z "$BARK_URL" ]; then
+            PAGE="$(curl -fsSL --retry 2 'https://freesound.org/people/yunjish/sounds/608732/')"
+            BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://[^" ]+freesound[^" ]+/[^" ]+-(hq|lq)\.mp3' | head -n 1)"
+          fi
+          if [ -n "$BARK_URL" ]; then
+            curl -fsSL --retry 2 "$BARK_URL" -o pomeranian-bark.mp3
+            test -s pomeranian-bark.mp3 && echo "Bundled real Pomeranian bark sample."
+          else
+            echo "Pomeranian sample unavailable; PomFit will use its fallback bark."
+          fi
+          exit 0
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
