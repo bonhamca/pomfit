@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=16';
+import { DEFAULT_DATA } from './data.js?v=17';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -29,6 +29,49 @@ function mealSchedule(){return personalProfile().meals||{
   dinner:{enabled:true,time:'19:00',location:'Home'}
 };}
 function workoutGoals(){const g=personalProfile().workout_goals;return Array.isArray(g)?g:[];}
+const FOOD_GROUPS={
+  meat:['beef','steak','ground beef','hamburger','pork','bacon','ham','sausage','hot dog','salami','pepperoni','lamb','veal','turkey','chicken','duck'],
+  fish:['salmon','tuna','cod','tilapia','catfish','trout','branzino','sole','sardines','anchovies','shrimp','prawns','crab','lobster','scallops','mussels','clams','oysters','fish','shellfish'],
+  dairy:['milk','cheese','swiss','parmesan','yogurt','greek yogurt','cottage cheese','cream','butter'],
+  eggs:['egg','eggs'],
+  grains:['bread','toast','bagel','pasta','rice','oatmeal','oats','cereal','quinoa','barley','farro','tortilla','bun','cracker','crackers','corn'],
+  legumes:['beans','black beans','kidney beans','chickpeas','hummus','lentils','peas'],
+  fruit:['apple','banana','orange','grapefruit','grapes','mango','pineapple','pear','peach','plum','cherries','berries','strawberries','blueberries','raspberries','blackberries','watermelon','melon'],
+  juice:['orange juice','apple juice','juice','sports drink','soda','cola'],
+  starchy:['potato','potatoes','sweet potato','sweet potatoes','yam','yams'],
+  sweets:['sugar','candy','cookie','cookies','cake','brownie','ice cream','dessert','donut','doughnut','syrup','honey'],
+  nuts:['pistachios','almonds','walnuts','pecans','macadamia','peanuts','peanut butter','nuts','pepitas','pumpkin seeds','seeds'],
+  vegetables:['asparagus','broccoli','cauliflower','spinach','zucchini','green beans','mushrooms','tomato','tomatoes','cucumber','lettuce','romaine','greens','peppers','bell peppers','onion','onions','celery','cabbage','kale','eggplant'],
+  fats:['olive oil','avocado','olives','tallow']
+};
+function normalizeFoodName(v){return String(v||'').trim().toLowerCase().replace(/\s+/g,' ');}
+function foodGroups(food){
+  const f=normalizeFoodName(food),groups=[];
+  for(const [group,items] of Object.entries(FOOD_GROUPS)){
+    if(items.some(x=>f===x||f.includes(x)||x.includes(f)))groups.push(group);
+  }
+  return groups;
+}
+function foodCompatibility(food,diet){
+  const f=normalizeFoodName(food),g=foodGroups(f);
+  if(!f)return{status:'unknown',message:'Enter a food first.'};
+  if(!g.length)return{status:'unknown',message:`I don't recognize “${food}” well enough to add it automatically. Try a simpler food name or add it manually.`};
+  if(diet==='vegetarian'&&(g.includes('meat')||g.includes('fish')))return{status:'no',message:`“${food}” does not fit a vegetarian diet because it contains meat, fish, or shellfish.`};
+  if(diet==='pescatarian'&&g.includes('meat'))return{status:'no',message:`“${food}” does not fit a pescatarian diet because it is meat or poultry.`};
+  if(diet==='keto'){
+    if(g.some(x=>['grains','legumes','juice','starchy','sweets'].includes(x)))return{status:'no',message:`“${food}” is generally too carbohydrate-dense for the current keto setting.`};
+    if(g.includes('fruit')&&!['berries','strawberries','blueberries','raspberries','blackberries','avocado'].some(x=>f.includes(x)))return{status:'no',message:`“${food}” is usually too high in carbohydrate for the current keto setting; berries are the main fruit exception in PomFit.`};
+  }
+  if(diet==='lowcarb'){
+    if(g.some(x=>['juice','sweets'].includes(x)))return{status:'no',message:`“${food}” is too sugar/carbohydrate-dense for the current low-carb setting.`};
+    if(g.includes('grains')||g.includes('starchy'))return{status:'limited',message:`“${food}” can fit only in a measured portion on a low-carb diet. PomFit will not auto-add it as a preferred staple.`};
+  }
+  if(diet==='mediterranean'){
+    if(g.includes('sweets')||g.includes('juice'))return{status:'limited',message:`“${food}” is not a preferred Mediterranean-diet staple. Keep it occasional rather than adding it as a default food.`};
+    if(g.includes('meat')&&['bacon','sausage','hot dog','salami','pepperoni'].some(x=>f.includes(x)))return{status:'limited',message:`“${food}” can be occasional, but processed meat is not a preferred Mediterranean-diet staple.`};
+  }
+  return{status:'yes',message:`“${food}” is compatible with the selected ${diet==='lowcarb'?'low-carb':diet} diet.`};
+}
 function workoutChecks(){return personal?.settings?.workout_checks||{};}
 function barkEnabled(){return personal?.settings?.bark_reminder_enabled===true;}
 function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
@@ -409,14 +452,14 @@ function renderProfile(){
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
   <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age||'')}"></label><label class="small">Height (in) <input id="profHeight" class="search" type="number" min="48" max="90" step=".5" value="${esc(p.height_in||'')}"></label><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb||'')}"></label></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select></div>
-  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label></div>
+  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('muscle','Muscle building')}${goal('cardio','Cardio fitness')}${goal('ski','Train for skiing')}${goal('cycling','Train for cycling')}${goal('running','Train for running')}</div></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
   </div><button class="primary" id="saveProfileBtn">Save profile</button></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v16<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v17<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -445,6 +488,18 @@ function bindDynamic(){
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#dietStyle'))$('#dietStyle').value=dietStyle();
+  if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=async()=>{
+    const food=$('#foodQuery').value.trim(),diet=$('#dietStyle').value;
+    const result=foodCompatibility(food,diet),out=$('#foodQueryResult');
+    out.textContent=result.message;
+    if(result.status!=='yes')return;
+    const existing=$('#foodLikes').value.split(',').map(x=>x.trim()).filter(Boolean);
+    if(!existing.some(x=>x.toLowerCase()===food.toLowerCase()))existing.push(food);
+    $('#foodLikes').value=existing.join(', ');
+    const next={...personalProfile(),diet_style:diet,food_likes:$('#foodLikes').value.trim()};
+    await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
+    out.textContent=result.message+' Added to foods you like.';
+  };
   if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
     const goals=$$('[data-goal]:checked').map(x=>x.dataset.goal);
     const meals={};
@@ -460,7 +515,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=16';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=17';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
