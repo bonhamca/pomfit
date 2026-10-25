@@ -365,13 +365,24 @@ function textFor(d,k){
   return d[k];
 }
 function meal(d,i,k,label){
-  const t=textFor(d,k);if(!t)return'';const id=`${i}-${ui.view}-${k}`;
-  return `<div class="meal"><input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''}><b>${label}</b><p>${esc(t)}</p></div>`;
+  if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
+  const t=textFor(d,k);if(!t)return'';
+  const id=`${i}-${ui.view}-${k}`,isMine=ui.view===myView();
+  const box=isMine?`<input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''} aria-label="Mark ${esc(label)} complete">`:'';
+  const meta=isMine&&profileReady()?mealMeta(k):'';
+  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p></div>`;
 }
 function dayCard(d,i){
-  let w='';if(workoutShown(ui.view)){
-    w=ui.view==='Both'? `<div class="work"><b>Clark:</b> ${esc(d.workout_c)}<br><b>Elizabeth:</b> ${esc(d.workout_e)}</div>`
-      : `<div class="work"><b>Workout:</b> ${esc(ui.view==='Clark'?d.workout_c:d.workout_e)}</div>`;
+  let w='';
+  if(workoutShown(ui.view)){
+    if(ui.view==='Both'){
+      w=`<div class="work"><b>Clark:</b> ${esc(d.workout_c)}<br><b>Elizabeth:</b> ${esc(d.workout_e)}</div>`;
+    }else{
+      const id=`${i}-${ui.view}`,isMine=ui.view===myView();
+      const box=isMine?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';
+      const workout=isMine&&profileReady()?personalWorkoutFor(i):(ui.view==='Clark'?d.workout_c:d.workout_e);
+      w=`<div class="work">${box}<b>Workout:</b> ${esc(workout)}</div>`;
+    }
   }
   return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${w}<div class="prep"><b>Prep:</b> ${esc(d.prep)}</div></section>`;
 }
