@@ -270,3 +270,7 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .meal-alt{margin-top:10px;border:1px solid rgba(201,99,61,.28);background:var(--rose-soft);color:var(--accent-dark);border-radius:999px;padding:9px 12px;font-size:.82rem;font-weight:800;width:auto}
 .meal-alt:hover{background:#f3ddd5}
 @media(max-width:420px){.height-row{grid-template-columns:1fr}.meal-alt{width:100%}}
+
+.header-actions{display:flex;gap:8px;align-items:center}
+.hunger-answer{margin-top:12px;background:var(--blue-soft);border:1px solid rgba(66,99,75,.14);border-radius:14px;padding:12px 14px}
+.hunger-answer b{display:block;color:var(--green-dark);margin-bottom:6px}.hunger-answer ul{margin:0;padding-left:20px}.hunger-answer li{margin:5px 0}
