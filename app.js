@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=33';
+import { DEFAULT_DATA } from './data.js?v=34';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -137,7 +137,7 @@ function collectProfileForm(){
     fasting_start:$('#ifStart').value,
     fasting_end:$('#ifEnd').value,
     workout_goals:goals,
-    equipment:$('[data-equipment]:checked').map(x=>x.dataset.equipment),
+    equipment:$$('[data-equipment]:checked').map(x=>x.dataset.equipment),
     equipment_notes:$('#equipmentNotes')?.value.trim()||'',
     training_programs:Object.fromEntries(Object.keys(PROGRAM_DEVICES).map(k=>[k,{
       name:$('#programName_'+k)?.value.trim()||'',
@@ -196,7 +196,7 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=33');
+    const audio=new Audio('./Gizmo-bark.mp3?v=34');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -829,7 +829,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v33<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v34<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -867,9 +867,9 @@ function bindDynamic(){
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#dietStyle'))$('#dietStyle').value=dietStyle();
-  const syncProgramRows=()=>$('[data-program-row]').forEach(row=>{const cb=$('[data-equipment="'+row.dataset.programRow+'"]');row.classList.toggle('hidden',!cb?.checked);});
+  const syncProgramRows=()=>$$('[data-program-row]').forEach(row=>{const cb=$('[data-equipment="'+row.dataset.programRow+'"]');row.classList.toggle('hidden',!cb?.checked);});
   syncProgramRows();
-  $('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
+  $$('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
   if($('#hungerBtn'))$('#hungerBtn').onclick=()=>{
     const a=hungerSuggestions(),box=$('#hungerResult');
     box.innerHTML=`<div class="hunger-answer"><b>${esc(a.title)}</b><ul>${a.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
@@ -934,7 +934,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=33';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=34';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -953,7 +953,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=33',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=34',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
