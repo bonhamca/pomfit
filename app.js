@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=23';
+import { DEFAULT_DATA } from './data.js?v=24';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -29,6 +29,25 @@ function mealSchedule(){return personalProfile().meals||{
   dinner:{enabled:true,time:'19:00',location:'Home'}
 };}
 function workoutGoals(){const g=personalProfile().workout_goals;return Array.isArray(g)?g:[];}
+function equipmentList(){const e=personalProfile().equipment;return Array.isArray(e)?e:[];}
+function equipmentNotes(){return String(personalProfile().equipment_notes||'').trim();}
+function resistancePrescription(mode='strength'){
+  const e=equipmentList(),notes=equipmentNotes();
+  const suffix=notes?` Device notes: ${notes}.`:'';
+  if(e.includes('bowflex')){
+    return mode==='sculpt'
+      ?`Bowflex/home gym: 2–3 rounds of chest press, seated row or lat pulldown, shoulder work, curls/triceps and leg work your model supports; 12–15 controlled reps, moderate resistance.${suffix}`
+      :`Bowflex/home gym: chest press, row or lat pulldown, shoulder press, leg extension/curl or squat pattern your model supports; 3 sets of 8–12 with good form.${suffix}`;
+  }
+  if(e.includes('cable'))return `Cable machine: presses, rows/pulldowns, face pulls, lateral raises, curls/triceps and cable leg/hip work; ${mode==='sculpt'?'12–15 controlled reps':'8–12 reps'}.${suffix}`;
+  if(e.includes('dumbbells'))return `Dumbbells: squat or split squat, Romanian deadlift, row, press, lateral raise and curls/triceps; ${mode==='sculpt'?'2–3 rounds of 12–15 controlled reps':'3 sets of 8–12 reps'}.${suffix}`;
+  if(e.includes('barbell'))return `Barbell/rack: squat or hinge, press and row/pull; use moderate loads and leave 1–3 good reps in reserve.${suffix}`;
+  if(e.includes('kettlebell'))return `Kettlebells: goblet squat, hinge/deadlift, row, press, carries and controlled swings if experienced.${suffix}`;
+  if(e.includes('trx'))return `Suspension trainer/TRX: rows, presses, split squats, hamstring curls and anti-rotation core work.${suffix}`;
+  if(e.includes('bands'))return `Resistance bands: rows, presses, lateral walks, glute work, curls/triceps and anti-rotation core; 12–20 controlled reps.${suffix}`;
+  return `Bodyweight: squats/split squats, hip hinge or bridge, push-ups, supported rows if available, calf raises and core.${suffix}`;
+}
+function strengthSession(label,mode='strength'){return `${label}. ${resistancePrescription(mode)}`;}
 function mealOverrides(){return personal?.settings?.meal_overrides||{};}
 function mealRejections(){const r=personal?.settings?.meal_rejections;return Array.isArray(r)?r:[];}
 function profileHeightParts(){
@@ -38,7 +57,7 @@ function profileHeightParts(){
 function collectProfileForm(){
   const base=personalProfile();
   if(!$('#profAge'))return base;
-  const goals=$('[data-goal]:checked').map(x=>x.dataset.goal);
+  const goals=$$('[data-goal]:checked').map(x=>x.dataset.goal);
   const meals={};
   ['breakfast','lunch','afternoon','dinner'].forEach(k=>{
     meals[k]={
@@ -62,6 +81,8 @@ function collectProfileForm(){
     fasting_start:$('#ifStart').value,
     fasting_end:$('#ifEnd').value,
     workout_goals:goals,
+    equipment:$('[data-equipment]:checked').map(x=>x.dataset.equipment),
+    equipment_notes:$('#equipmentNotes')?.value.trim()||'',
     meals
   };
 }
@@ -114,8 +135,8 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const first=new Audio('./pomeranian-bark.mp3?v=23');
-    const second=new Audio('./pomeranian-bark.mp3?v=23');
+    const first=new Audio('./pomeranian-bark.mp3?v=24');
+    const second=new Audio('./pomeranian-bark.mp3?v=24');
     first.preload='auto';second.preload='auto';
     first.volume=.9;second.volume=.82;
     first.playbackRate=1.38;second.playbackRate=1.48;
@@ -285,50 +306,168 @@ function nextMealAlternative(slot,current){
     || current;
 }
 function personalWorkoutFor(i){
-  const goals=workoutGoals(),has=g=>goals.includes(g);
+  const goals=workoutGoals(),has=g=>goals.includes(g),sculpt=has('sculpt');
+
+  if(has('tennis')){
+    const p=[
+      strengthSession('Tennis lower-body lateral strength + rotational core',sculpt?'sculpt':'strength'),
+      'Tennis court movement: split-step, lateral shuffle, crossover and 6–10 short acceleration/deceleration reps',
+      strengthSession('Shoulder/scapular stability + upper body for serves and groundstrokes','sculpt'),
+      'Recovery: hips, calves, thoracic rotation and easy Zone 2 cardio',
+      'Tennis footwork intervals + rotational medicine-ball or band work if available',
+      'Tennis play / drills: 45–75 minutes with controlled point-play conditioning',
+      'Rest / mobility'
+    ];return p[i];
+  }
+  if(has('boxing')){
+    const p=[
+      'Boxing technique: shadowboxing or bag work, 6–8 × 2-minute rounds + footwork',
+      strengthSession('Boxing strength: legs, back, shoulders and anti-rotation core',sculpt?'sculpt':'strength'),
+      'Boxing conditioning: jump rope or low-impact intervals + 4–6 short bag/shadow rounds',
+      'Recovery: shoulder mobility, hips and easy Zone 2',
+      'Bag or mitt rounds: combinations, defense and footwork, 8–10 × 2 minutes',
+      'Boxing conditioning + core endurance; keep technique crisp rather than chasing fatigue',
+      'Rest / mobility'
+    ];return p[i];
+  }
+  if(has('swimming')){
+    const p=[
+      'Swim technique + aerobic endurance: easy/moderate continuous work with form focus',
+      strengthSession('Swimmer strength: back/scapula, posterior chain and core','sculpt'),
+      'Swim intervals: short repeats with generous enough rest to preserve stroke quality',
+      'Recovery: shoulder/scapular mobility + easy walk or spin',
+      'Swim pull/kick technique + core stability',
+      'Longer easy aerobic swim or mixed-stroke endurance session',
+      'Rest / mobility'
+    ];return p[i];
+  }
+  if(has('soccer')){
+    const p=[
+      strengthSession('Soccer lower-body strength + hamstrings/calves/core',sculpt?'sculpt':'strength'),
+      'Soccer acceleration/deceleration: 6–10 short sprints + controlled stops',
+      'Aerobic intervals or small-sided conditioning',
+      strengthSession('Upper-body maintenance + hip/ankle mobility','sculpt'),
+      'Soccer change-of-direction + ball touches/dribbling; quality over fatigue',
+      'Game, small-sided play, or longer aerobic field session',
+      'Rest / mobility'
+    ];return p[i];
+  }
+  if(has('basketball')){
+    const p=[
+      strengthSession('Basketball lower-body strength + ankle/knee resilience',sculpt?'sculpt':'strength'),
+      'Court conditioning: short sprints, defensive slides and controlled change of direction',
+      strengthSession('Upper body + core','sculpt'),
+      'Recovery: mobility, calves/ankles and easy Zone 2',
+      'Basketball jump/landing mechanics + lateral quickness + skill work',
+      'Shooting/skills plus game-style conditioning',
+      'Rest / mobility'
+    ];return p[i];
+  }
   if(has('ski')){
-    const p=has('sculpt')
-      ?['Lower-body sculpt + core','Zone 2 cardio + mobility','Upper-body sculpt: shoulders/back/arms','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body sculpt + short ski finisher','Rest / mobility']
-      :['Lower-body strength + core','Zone 2 cardio + mobility','Upper-body strength + core','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body strength + short ski-conditioning finisher','Rest / mobility'];
-    return p[i];
+    const p=[
+      strengthSession(sculpt?'Lower-body sculpt + core':'Lower-body strength + core',sculpt?'sculpt':'strength'),
+      'Zone 2 cardio + mobility',
+      strengthSession(sculpt?'Upper-body sculpt: shoulders/back/arms':'Upper-body strength + core',sculpt?'sculpt':'strength'),
+      'Ski-leg intervals: step-ups, split squats, lateral work and balance',
+      'Recovery cardio + balance',
+      strengthSession('Full-body work + short ski-conditioning finisher',sculpt?'sculpt':'strength'),
+      'Rest / mobility'
+    ];return p[i];
   }
   if(has('cycling')){
-    const p=['Endurance ride','Upper-body + core '+(has('sculpt')?'sculpt':'strength'),'Bike intervals / threshold work','Recovery spin + mobility','Full-body '+(has('sculpt')?'sculpt':'strength'),'Long endurance ride','Rest'];
-    return p[i];
+    const p=[
+      'Endurance ride',
+      strengthSession('Upper-body + core',sculpt?'sculpt':'strength'),
+      'Bike intervals / threshold work',
+      'Recovery spin + mobility',
+      strengthSession('Full-body resistance session',sculpt?'sculpt':'strength'),
+      'Long endurance ride',
+      'Rest'
+    ];return p[i];
   }
   if(has('running')){
-    const p=['Easy run + mobility','Lower-body '+(has('sculpt')?'sculpt':'strength')+' + core','Tempo or interval run','Upper-body '+(has('sculpt')?'sculpt':'strength'),'Easy run','Long run or event-specific session','Rest'];
-    return p[i];
+    const p=[
+      'Easy run + mobility',
+      strengthSession('Runner lower-body + core',sculpt?'sculpt':'strength'),
+      'Tempo or interval run',
+      strengthSession('Upper-body maintenance',sculpt?'sculpt':'strength'),
+      'Easy run',
+      'Long run or event-specific session',
+      'Rest'
+    ];return p[i];
   }
-  if(has('sculpt')){
-    const p=['Upper-body sculpt: shoulders, back, arms + core','Glutes/legs sculpt + balance','Zone 2 cardio + mobility','Chest/triceps + core sculpt','Full-body circuit: moderate load, controlled reps','Conditioning + posture/core','Rest / mobility'];
-    return p[i];
+  if(sculpt){
+    return [
+      strengthSession('Upper-body sculpt: shoulders, back, arms + core','sculpt'),
+      strengthSession('Glutes/legs sculpt + balance','sculpt'),
+      'Zone 2 cardio + mobility',
+      strengthSession('Chest/triceps + core sculpt','sculpt'),
+      strengthSession('Full-body sculpt circuit','sculpt'),
+      'Conditioning + posture/core',
+      'Rest / mobility'
+    ][i];
   }
-  if(has('strength')){
-    const p=['Upper-body strength','Lower-body strength + core','Mobility / recovery','Upper-body strength','Lower-body strength + carries','Zone 2 cardio','Rest'];
-    return p[i];
+  if(has('strength'))return [strengthSession('Upper-body strength'),strengthSession('Lower-body strength + core'),'Mobility / recovery',strengthSession('Upper-body strength'),strengthSession('Lower-body strength + carries'),'Zone 2 cardio','Rest'][i];
+  if(has('hiit'))return [strengthSession('Full-body strength'),'HIIT intervals','Mobility / recovery',strengthSession('Upper-body + core'),'Conditioning circuit','Zone 2 cardio','Rest'][i];
+  if(has('mobility'))return ['Mobility + core','Zone 2 cardio',strengthSession('Full-body strength'),'Mobility + balance','Core/posture','Long easy movement session','Rest'][i];
+  if(has('core'))return [strengthSession('Upper body + core'),strengthSession('Lower body + core'),'Zone 2 cardio + posture','Core stability + mobility',strengthSession('Full-body strength + core'),'Conditioning + carries','Rest'][i];
+  if(has('muscle'))return [strengthSession('Upper pull + biceps + core'),strengthSession('Lower body'),strengthSession('Upper push + triceps + core'),'Zone 2 cardio / recovery',strengthSession('Upper hypertrophy'),strengthSession('Lower body + carries'),'Rest'][i];
+  if(has('cardio'))return ['Zone 2 cardio',strengthSession('Full-body strength'),'Intervals','Recovery cardio + mobility','Zone 2 cardio','Longer cardio session','Rest'][i];
+  return [strengthSession('Full-body strength'),'Zone 2 cardio','Mobility / recovery',strengthSession('Full-body strength'),'Cardio intervals','Outdoor activity / long easy cardio','Rest'][i];
+}
+function withinEatingWindow(){
+  const p=personalProfile();
+  if(!p.intermittent_fasting)return true;
+  const toMin=t=>{const [h,m]=String(t||'').split(':').map(Number);return h*60+(m||0);};
+  const start=toMin(p.fasting_start||'12:00'),end=toMin(p.fasting_end||'20:00'),n=new Date(),now=n.getHours()*60+n.getMinutes();
+  return start<=end?(now>=start&&now<=end):(now>=start||now<=end);
+}
+function hungerSuggestions(){
+  if(personalProfile().intermittent_fasting&&!withinEatingWindow()){
+    return {title:'You are outside your eating window',items:['Water or sparkling water','Plain tea or black coffee if appropriate for you','If hunger is strong or persistent, it is reasonable to end the fast and choose a protein-forward snack rather than forcing it.']};
   }
-  if(has('hiit')){
-    const p=['Full-body strength','HIIT intervals','Mobility / recovery','Upper-body + core','Conditioning circuit','Zone 2 cardio','Rest'];
-    return p[i];
-  }
-  if(has('mobility')){
-    const p=['Mobility + core','Zone 2 cardio','Full-body strength','Mobility + balance','Core/posture','Long easy movement session','Rest'];
-    return p[i];
-  }
-  if(has('core')){
-    const p=['Upper body + core','Lower body + core','Zone 2 cardio + posture','Core stability + mobility','Full-body strength + core','Conditioning + carries','Rest'];
-    return p[i];
-  }
-  if(has('muscle')){
-    const p=['Upper pull + biceps + core','Lower body','Upper push + triceps + core','Zone 2 cardio / recovery','Upper hypertrophy','Lower body + carries','Rest'];
-    return p[i];
-  }
-  if(has('cardio')){
-    const p=['Zone 2 cardio','Full-body strength','Intervals','Recovery cardio + mobility','Zone 2 cardio','Longer cardio session','Rest'];
-    return p[i];
-  }
-  return ['Full-body strength','Zone 2 cardio','Mobility / recovery','Full-body strength','Cardio intervals','Outdoor activity / long easy cardio','Rest'][i];
+  const diet=dietStyle(),dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  const sets={
+    keto:[
+      ['3–4 oz salmon, tuna, chicken or lean beef with cucumber/asparagus',['salmon','tuna','chicken','beef','cucumber','asparagus']],
+      ['Swiss or another cheese with cucumber or tomato',['swiss','cheese','cucumber','tomato']],
+      ['A low-carb protein shake with water or unsweetened milk',['protein','whey','milk']],
+      ['1 oz pistachios or pepitas plus water',['pistachios','pepitas']]
+    ],
+    lowcarb:[
+      ['3–4 oz lean protein with non-starchy vegetables',['protein','chicken','fish','vegetables']],
+      ['Protein shake plus a small portion of berries',['protein','berries']],
+      ['Swiss cheese with cucumber/tomato',['swiss','cucumber','tomato']],
+      ['1 oz pistachios or pepitas',['pistachios','pepitas']]
+    ],
+    mediterranean:[
+      ['Fruit plus a measured handful of nuts',['fruit','nuts']],
+      ['Greek yogurt with berries',['yogurt','berries']],
+      ['3–4 oz fish or chicken with vegetables',['fish','chicken','vegetables']],
+      ['White beans or hummus with vegetables',['beans','hummus','vegetables']]
+    ],
+    pescatarian:[
+      ['3–4 oz salmon, tuna or shrimp with vegetables',['salmon','tuna','shrimp','vegetables']],
+      ['Protein shake with berries',['protein','berries']],
+      ['Greek yogurt or cheese with fruit',['yogurt','cheese','fruit']],
+      ['1 oz pistachios or pepitas',['pistachios','pepitas']]
+    ],
+    vegetarian:[
+      ['Greek yogurt with berries and a few nuts',['yogurt','berries','nuts']],
+      ['Eggs with vegetables',['eggs','vegetables']],
+      ['Protein shake plus fruit',['protein','fruit']],
+      ['Beans/lentils or hummus with vegetables',['beans','lentils','hummus','vegetables']]
+    ],
+    balanced:[
+      ['3–4 oz lean protein with vegetables',['protein','chicken','fish','vegetables']],
+      ['Protein shake plus fruit or berries',['protein','fruit','berries']],
+      ['Fruit plus a measured handful of nuts',['fruit','nuts']],
+      ['Swiss cheese with fruit or vegetables',['swiss','fruit','vegetables']]
+    ]
+  };
+  let options=(sets[diet]||sets.balanced).map((x,idx)=>({x,idx,blocked:dislikes.some(d=>x[1].some(t=>t.includes(d)||d.includes(t))),score:likes.reduce((n,l)=>n+(x[1].some(t=>t.includes(l)||l.includes(t))?2:0),0)}));
+  options=options.filter(x=>!x.blocked).sort((a,b)=>b.score-a.score||a.idx-b.idx);
+  return {title:'Still hungry? Choose one small add-on',items:(options.length?options:sets[diet]||sets.balanced).slice(0,3).map(x=>Array.isArray(x)?x[0]:x.x[0])};
 }
 function mealMeta(slot){
   const s=mealSchedule()[slot];if(!s)return'';
@@ -506,7 +645,8 @@ function dayCard(d,i){
 }
 function renderToday(){
   const n=personal?.notes?.free_text||'';
-  return dayCard(menu().days[todayIndex()],todayIndex())+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
+  const hunger=ui.view===myView()?'<div class="card hunger-card"><h3>Still hungry?</h3><p class="small">Get a small add-on that fits your saved diet, dislikes and fasting window.</p><button class="secondary" id="hungerBtn">I’m still hungry — what can I eat?</button><div id="hungerResult"></div></div>':'';
+  return dayCard(menu().days[todayIndex()],todayIndex())+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
 }
 function renderWeek(){return `<div class="weekgrid">${menu().days.map(dayCard).join('')}</div>`;}
 function renderPrep(){return `<div class="card"><h2>Shared meal prep</h2><ul class="list">${prep().map(x=>`<li><input type="checkbox" data-prep="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('')}</ul></div>`;}
@@ -521,20 +661,23 @@ function renderWorkout(){
   return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Check off each workout when finished.</p>`:'<p class="small">You can view the plan, but only that person can mark a workout complete.</p>'}</div><div class="weekgrid">${menu().days.map((d,i)=>{const id=`${i}-${p}`,box=isMe?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';const workout=isMe&&profileReady()?personalWorkoutFor(i):(p==='Clark'?d.workout_c:d.workout_e);return `<div class="card"><h3>${esc(d.date)}</h3><div class="work">${box}${esc(workout)}</div></div>`;}).join('')}</div>`;
 }
 function renderProfile(){
-  const p=personalProfile(),m=mealSchedule(),goals=workoutGoals();
+  const p=personalProfile(),m=mealSchedule(),goals=workoutGoals(),equipment=equipmentList();
   const goal=(g,label)=>`<label class="toggle"><input type="checkbox" data-goal="${g}" ${goals.includes(g)?'checked':''}> ${label}</label>`;
+  const equip=(g,label)=>`<label class="toggle"><input type="checkbox" data-equipment="${g}" ${equipment.includes(g)?'checked':''}> ${label}</label>`;
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
   <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select></div>
   <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
-  <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}${goal('ski','Train for skiing')}${goal('cycling','Train for cycling')}${goal('running','Train for running')}</div></div>
+  <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
+  <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
+  <div class="metric"><b>Resistance equipment available</b><div class="controls">${equip('bowflex','Bowflex / home gym')}${equip('dumbbells','Dumbbells')}${equip('bands','Resistance bands')}${equip('cable','Cable machine')}${equip('barbell','Barbell / rack')}${equip('kettlebell','Kettlebells')}${equip('trx','TRX / suspension trainer')}${equip('bodyweight','Bodyweight only')}</div><label class="small">Device/model or equipment notes <input id="equipmentNotes" class="search" value="${esc(p.equipment_notes||'')}" placeholder="e.g. Bowflex PR3000, adjustable dumbbells to 50 lb"></label></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v23<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v24<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -572,6 +715,11 @@ function bindDynamic(){
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#dietStyle'))$('#dietStyle').value=dietStyle();
+  if($('#hungerBtn'))$('#hungerBtn').onclick=()=>{
+    const a=hungerSuggestions(),box=$('#hungerResult');
+    box.innerHTML=`<div class="hunger-answer"><b>${esc(a.title)}</b><ul>${a.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  };
+  if($('#editProfileBtn'))$('#editProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=async()=>{
     const food=$('#foodQuery').value.trim(),diet=$('#dietStyle').value;
     const result=foodCompatibility(food,diet),out=$('#foodQueryResult');
@@ -616,7 +764,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=23';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=24';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -626,6 +774,7 @@ $('#signInBtn').onclick=signIn;$('#signUpBtn').onclick=signUp;$('#createHousehol
 $('#profileSeg').onclick=e=>{if(e.target.dataset.p){ui.view=e.target.dataset.p;render();}};
 $('#nav').onclick=e=>{if(e.target.dataset.tab){ui.tab=e.target.dataset.tab;render();}};
 $('#workoutToggle').onchange=async e=>{if(ui.view===myView()){profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);}render();};
+$('#profileBtn').onclick=()=>{ui.tab='profile';render();};
 $('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
