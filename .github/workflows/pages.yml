@@ -25,24 +25,15 @@ jobs:
         uses: actions/checkout@v6
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Fetch real Pomeranian bark (CC0)
+      - name: Bundle real dog bark
         shell: bash
         run: |
           set -e
-          EMBED_URL='https://freesound.org/embed/sound/iframe/608732/simple/medium/'
-          PAGE="$(curl -fsSL --retry 3 "$EMBED_URL")"
-          BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://cdn\.freesound\.org/previews/[0-9]+/[0-9]+_[0-9]+-(hq|lq)\.mp3' | head -n 1)"
-          if [ -z "$BARK_URL" ]; then
-            BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://cdn\.freesound\.org/[^"''' <]+\.mp3' | head -n 1)"
-          fi
-          if [ -z "$BARK_URL" ]; then
-            echo "Could not locate Pomeranian preview URL in Freesound embed page."
-            exit 1
-          fi
-          echo "Using Freesound Pomeranian preview."
-          curl -fsSL --retry 3 "$BARK_URL" -o pomeranian-bark.mp3
+          curl -fsSL --retry 3 'https://commons.wikimedia.org/wiki/Special:Redirect/file/George_vuf_1996.ogg' -o bark-source.ogg
+          test -s bark-source.ogg
+          ffmpeg -hide_banner -loglevel error -y -i bark-source.ogg -codec:a libmp3lame -q:a 4 pomeranian-bark.mp3
           test -s pomeranian-bark.mp3
-          file pomeranian-bark.mp3
+          rm -f bark-source.ogg
           ls -lh pomeranian-bark.mp3
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
