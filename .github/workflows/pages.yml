@@ -28,20 +28,22 @@ jobs:
       - name: Fetch real Pomeranian bark (CC0)
         shell: bash
         run: |
-          set +e
-          API_JSON="$(curl -fsSL --retry 2 'https://freesound.org/api/sounds/608732')"
-          BARK_URL="$(printf '%s' "$API_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("preview-hq-mp3") or d.get("preview-lq-mp3") or "")' 2>/dev/null)"
+          set -e
+          EMBED_URL='https://freesound.org/embed/sound/iframe/608732/simple/medium/'
+          PAGE="$(curl -fsSL --retry 3 "$EMBED_URL")"
+          BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://cdn\.freesound\.org/previews/[0-9]+/[0-9]+_[0-9]+-(hq|lq)\.mp3' | head -n 1)"
           if [ -z "$BARK_URL" ]; then
-            PAGE="$(curl -fsSL --retry 2 'https://freesound.org/people/yunjish/sounds/608732/')"
-            BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://[^" ]+freesound[^" ]+/[^" ]+-(hq|lq)\.mp3' | head -n 1)"
+            BARK_URL="$(printf '%s' "$PAGE" | grep -oE 'https://cdn\.freesound\.org/[^"''' <]+\.mp3' | head -n 1)"
           fi
-          if [ -n "$BARK_URL" ]; then
-            curl -fsSL --retry 2 "$BARK_URL" -o pomeranian-bark.mp3
-            test -s pomeranian-bark.mp3 && echo "Bundled real Pomeranian bark sample."
-          else
-            echo "Pomeranian sample unavailable; PomFit will use its fallback bark."
+          if [ -z "$BARK_URL" ]; then
+            echo "Could not locate Pomeranian preview URL in Freesound embed page."
+            exit 1
           fi
-          exit 0
+          echo "Using Freesound Pomeranian preview."
+          curl -fsSL --retry 3 "$BARK_URL" -o pomeranian-bark.mp3
+          test -s pomeranian-bark.mp3
+          file pomeranian-bark.mp3
+          ls -lh pomeranian-bark.mp3
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
