@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=22';
+import { DEFAULT_DATA } from './data.js?v=23';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -29,6 +29,42 @@ function mealSchedule(){return personalProfile().meals||{
   dinner:{enabled:true,time:'19:00',location:'Home'}
 };}
 function workoutGoals(){const g=personalProfile().workout_goals;return Array.isArray(g)?g:[];}
+function mealOverrides(){return personal?.settings?.meal_overrides||{};}
+function mealRejections(){const r=personal?.settings?.meal_rejections;return Array.isArray(r)?r:[];}
+function profileHeightParts(){
+  const total=Number(personalProfile().height_in)||0;
+  return {ft:total?Math.floor(total/12):'',inch:total?Math.round((total%12)*10)/10:''};
+}
+function collectProfileForm(){
+  const base=personalProfile();
+  if(!$('#profAge'))return base;
+  const goals=$('[data-goal]:checked').map(x=>x.dataset.goal);
+  const meals={};
+  ['breakfast','lunch','afternoon','dinner'].forEach(k=>{
+    meals[k]={
+      enabled:!!$('[data-meal-enabled="'+k+'"]')?.checked,
+      time:$('[data-meal-time="'+k+'"]')?.value||'',
+      location:$('[data-meal-location="'+k+'"]')?.value||''
+    };
+  });
+  const ft=Number($('#profHeightFt')?.value)||0,inch=Number($('#profHeightIn')?.value)||0;
+  const height=ft||inch?ft*12+inch:null;
+  return {
+    ...base,
+    onboarding_complete:true,
+    age:Number($('#profAge').value)||null,
+    height_in:height,
+    weight_lb:Number($('#profWeight').value)||null,
+    diet_style:$('#dietStyle').value,
+    food_likes:$('#foodLikes').value.trim(),
+    food_dislikes:$('#foodDislikes').value.trim(),
+    intermittent_fasting:$('#ifToggle').checked,
+    fasting_start:$('#ifStart').value,
+    fasting_end:$('#ifEnd').value,
+    workout_goals:goals,
+    meals
+  };
+}
 const FOOD_GROUPS={
   meat:['beef','steak','ground beef','hamburger','pork','bacon','ham','sausage','hot dog','salami','pepperoni','lamb','veal','turkey','chicken','duck'],
   fish:['salmon','tuna','cod','tilapia','catfish','trout','branzino','sole','sardines','anchovies','shrimp','prawns','crab','lobster','scallops','mussels','clams','oysters','fish','shellfish'],
@@ -78,8 +114,8 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const first=new Audio('./pomeranian-bark.mp3?v=22');
-    const second=new Audio('./pomeranian-bark.mp3?v=22');
+    const first=new Audio('./pomeranian-bark.mp3?v=23');
+    const second=new Audio('./pomeranian-bark.mp3?v=23');
     first.preload='auto';second.preload='auto';
     first.volume=.9;second.volume=.82;
     first.playbackRate=1.38;second.playbackRate=1.48;
@@ -221,27 +257,67 @@ const MEAL_CATALOG={
     ]
   }
 };
-function chooseMeal(slot,dayIndex){
+function mealCandidates(slot){
   const diet=MEAL_CATALOG[dietStyle()]||MEAL_CATALOG.balanced;
   const options=diet[slot]||diet.lunch,dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
-  let ranked=options.map((x,idx)=>({x,idx,blocked:dislikes.some(d=>x[1].some(i=>i.includes(d)||d.includes(i))),score:likes.reduce((s,l)=>s+(x[1].some(i=>i.includes(l)||l.includes(i))?2:0),0)}));
+  let ranked=options.map((x,idx)=>({
+    x,idx,
+    blocked:dislikes.some(d=>x[1].some(i=>i.includes(d)||d.includes(i))),
+    score:likes.reduce((sum,l)=>sum+(x[1].some(i=>i.includes(l)||l.includes(i))?2:0),0)
+  }));
   let usable=ranked.filter(r=>!r.blocked);if(!usable.length)usable=ranked;
   usable.sort((a,b)=>b.score-a.score||a.idx-b.idx);
-  return usable[dayIndex%usable.length].x[0];
+  return usable.map(r=>r.x[0]);
+}
+function chooseMeal(slot,dayIndex,key=''){
+  if(key&&mealOverrides()[key])return mealOverrides()[key];
+  const candidates=mealCandidates(slot);
+  const rejected=new Set(mealRejections().map(x=>String(x).toLowerCase()));
+  const usable=candidates.filter(x=>!rejected.has(x.toLowerCase()));
+  const pool=usable.length?usable:candidates;
+  return pool[dayIndex%pool.length]||'Choose a compatible meal';
+}
+function nextMealAlternative(slot,current){
+  const candidates=mealCandidates(slot);
+  const rejected=new Set([...mealRejections(),current].map(x=>String(x).toLowerCase()));
+  return candidates.find(x=>!rejected.has(x.toLowerCase()))
+    || candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())
+    || current;
 }
 function personalWorkoutFor(i){
-  const goals=workoutGoals();
-  const has=g=>goals.includes(g);
+  const goals=workoutGoals(),has=g=>goals.includes(g);
   if(has('ski')){
-    const p=['Lower-body strength + core','Zone 2 cardio + mobility','Upper-body strength + core','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body strength + short ski-conditioning finisher','Rest / mobility'];
+    const p=has('sculpt')
+      ?['Lower-body sculpt + core','Zone 2 cardio + mobility','Upper-body sculpt: shoulders/back/arms','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body sculpt + short ski finisher','Rest / mobility']
+      :['Lower-body strength + core','Zone 2 cardio + mobility','Upper-body strength + core','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body strength + short ski-conditioning finisher','Rest / mobility'];
     return p[i];
   }
   if(has('cycling')){
-    const p=['Endurance ride','Upper-body + core strength','Bike intervals / threshold work','Recovery spin + mobility','Full-body strength','Long endurance ride','Rest'];
+    const p=['Endurance ride','Upper-body + core '+(has('sculpt')?'sculpt':'strength'),'Bike intervals / threshold work','Recovery spin + mobility','Full-body '+(has('sculpt')?'sculpt':'strength'),'Long endurance ride','Rest'];
     return p[i];
   }
   if(has('running')){
-    const p=['Easy run + mobility','Strength: legs + core','Tempo or interval run','Upper-body strength','Easy run','Long run or event-specific session','Rest'];
+    const p=['Easy run + mobility','Lower-body '+(has('sculpt')?'sculpt':'strength')+' + core','Tempo or interval run','Upper-body '+(has('sculpt')?'sculpt':'strength'),'Easy run','Long run or event-specific session','Rest'];
+    return p[i];
+  }
+  if(has('sculpt')){
+    const p=['Upper-body sculpt: shoulders, back, arms + core','Glutes/legs sculpt + balance','Zone 2 cardio + mobility','Chest/triceps + core sculpt','Full-body circuit: moderate load, controlled reps','Conditioning + posture/core','Rest / mobility'];
+    return p[i];
+  }
+  if(has('strength')){
+    const p=['Upper-body strength','Lower-body strength + core','Mobility / recovery','Upper-body strength','Lower-body strength + carries','Zone 2 cardio','Rest'];
+    return p[i];
+  }
+  if(has('hiit')){
+    const p=['Full-body strength','HIIT intervals','Mobility / recovery','Upper-body + core','Conditioning circuit','Zone 2 cardio','Rest'];
+    return p[i];
+  }
+  if(has('mobility')){
+    const p=['Mobility + core','Zone 2 cardio','Full-body strength','Mobility + balance','Core/posture','Long easy movement session','Rest'];
+    return p[i];
+  }
+  if(has('core')){
+    const p=['Upper body + core','Lower body + core','Zone 2 cardio + posture','Core stability + mobility','Full-body strength + core','Conditioning + carries','Rest'];
     return p[i];
   }
   if(has('muscle')){
@@ -252,8 +328,7 @@ function personalWorkoutFor(i){
     const p=['Zone 2 cardio','Full-body strength','Intervals','Recovery cardio + mobility','Zone 2 cardio','Longer cardio session','Rest'];
     return p[i];
   }
-  const p=['Full-body strength','Zone 2 cardio','Mobility / recovery','Full-body strength','Cardio intervals','Outdoor activity / long easy cardio','Rest'];
-  return p[i];
+  return ['Full-body strength','Zone 2 cardio','Mobility / recovery','Full-body strength','Cardio intervals','Outdoor activity / long easy cardio','Rest'][i];
 }
 function mealMeta(slot){
   const s=mealSchedule()[slot];if(!s)return'';
@@ -395,10 +470,10 @@ function tip(){
   }
   return `${pomName()} says: ${message}`;
 }
-function textFor(d,k){
+function textFor(d,k,i=todayIndex()){
   if(ui.view===myView()&&profileReady()){
-    const map={breakfast:'breakfast',lunch:'lunch',afternoon:'afternoon',dinner:'dinner'};
-    return chooseMeal(map[k],todayIndex());
+    const key=`${i}-${ui.view}-${k}`;
+    return chooseMeal(k,i,key);
   }
   if(ui.view==='Clark')return k==='breakfast'?d.clark_am:k==='afternoon'?d.clark_afternoon:d[k];
   if(ui.view==='Elizabeth')return k==='breakfast'?d.elizabeth_breakfast:k==='afternoon'?d.elizabeth_snack:d[k];
@@ -408,11 +483,12 @@ function textFor(d,k){
 }
 function meal(d,i,k,label){
   if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
-  const t=textFor(d,k);if(!t)return'';
+  const t=textFor(d,k,i);if(!t)return'';
   const id=`${i}-${ui.view}-${k}`,isMine=ui.view===myView();
   const box=isMine?`<input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''} aria-label="Mark ${esc(label)} complete">`:'';
   const meta=isMine&&profileReady()?mealMeta(k):'';
-  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p></div>`;
+  const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Not this meal — give me another</button>`:'';
+  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${alt}</div>`;
 }
 function dayCard(d,i){
   let w='';
@@ -449,16 +525,16 @@ function renderProfile(){
   const goal=(g,label)=>`<label class="toggle"><input type="checkbox" data-goal="${g}" ${goals.includes(g)?'checked':''}> ${label}</label>`;
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
-  <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age||'')}"></label><label class="small">Height (in) <input id="profHeight" class="search" type="number" min="48" max="90" step=".5" value="${esc(p.height_in||'')}"></label><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb||'')}"></label></div>
+  <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select></div>
   <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
-  <div class="metric"><b>Workout goals</b><div class="controls">${goal('muscle','Muscle building')}${goal('cardio','Cardio fitness')}${goal('ski','Train for skiing')}${goal('cycling','Train for cycling')}${goal('running','Train for running')}</div></div>
+  <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}${goal('ski','Train for skiing')}${goal('cycling','Train for cycling')}${goal('running','Train for running')}</div></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
-  </div><button class="primary" id="saveProfileBtn">Save profile</button></div>`;
+  </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v22<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v23<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -470,8 +546,17 @@ function render(){
   $('#content').innerHTML=pages[ui.tab]();bindDynamic();
 }
 async function savePersonal(patch){
-  personal={...personal,...patch,updated_at:new Date().toISOString()};syncMsg('Saving personal changes…');
-  const r=await supabase.from('personal_state').update({...patch,updated_at:personal.updated_at}).eq('user_id',session.user.id);syncMsg(r.error?'Save failed':'Synced');
+  syncMsg('Saving personal changes…');
+  const updatedAt=new Date().toISOString();
+  const r=await supabase.from('personal_state')
+    .update({...patch,updated_at:updatedAt})
+    .eq('user_id',session.user.id)
+    .select('*')
+    .single();
+  if(r.error){syncMsg('Save failed');throw r.error;}
+  personal=r.data;
+  syncMsg('Synced');
+  return r.data;
 }
 async function saveShared(patch){
   shared={...shared,...patch,updated_at:new Date().toISOString(),updated_by:session.user.id};syncMsg('Saving shared changes…');
@@ -495,26 +580,43 @@ function bindDynamic(){
     const existing=$('#foodLikes').value.split(',').map(x=>x.trim()).filter(Boolean);
     if(!existing.some(x=>x.toLowerCase()===food.toLowerCase()))existing.push(food);
     $('#foodLikes').value=existing.join(', ');
-    const next={...personalProfile(),diet_style:diet,food_likes:$('#foodLikes').value.trim()};
-    await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
-    out.textContent=result.message+' Added to foods you like.';
+    const next={...collectProfileForm(),diet_style:diet,food_likes:$('#foodLikes').value.trim()};
+    try{
+      await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
+      out.textContent=result.message+' Added to foods you like.';
+    }catch(e){out.textContent='Could not save the food change: '+e.message;}
   };
   if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
-    const goals=$$('[data-goal]:checked').map(x=>x.dataset.goal);
-    const meals={};
-    ['breakfast','lunch','afternoon','dinner'].forEach(k=>{
-      meals[k]={enabled:!!$('[data-meal-enabled="'+k+'"]')?.checked,time:$('[data-meal-time="'+k+'"]')?.value||'',location:$('[data-meal-location="'+k+'"]')?.value||''};
-    });
-    const next={...personalProfile(),onboarding_complete:true,age:Number($('#profAge').value)||null,height_in:Number($('#profHeight').value)||null,weight_lb:Number($('#profWeight').value)||null,diet_style:$('#dietStyle').value,food_likes:$('#foodLikes').value.trim(),food_dislikes:$('#foodDislikes').value.trim(),intermittent_fasting:$('#ifToggle').checked,fasting_start:$('#ifStart').value,fasting_end:$('#ifEnd').value,workout_goals:goals,meals};
-    await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
-    ui.tab='today';render();
+    const status=$('#profileSaveStatus');
+    try{
+      const next=collectProfileForm();
+      status.textContent='Saving…';
+      await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
+      const saved=personal?.settings?.profile_config||{};
+      const vitalOk=saved.age===next.age&&saved.height_in===next.height_in&&saved.weight_lb===next.weight_lb;
+      status.textContent=vitalOk?'Profile saved.':'Profile saved, but please recheck age/height/weight.';
+      render();
+      if($('#profileSaveStatus'))$('#profileSaveStatus').textContent=vitalOk?'Profile saved.':'Please recheck age/height/weight.';
+    }catch(e){
+      status.textContent='Save failed: '+e.message;
+    }
   };
+  $$('[data-alt-meal]').forEach(btn=>btn.onclick=async()=>{
+    const key=btn.dataset.altMeal,slot=btn.dataset.slot,current=btn.dataset.current;
+    const alternative=nextMealAlternative(slot,current);
+    const rejected=[...new Set([...mealRejections(),current])];
+    const overrides={...mealOverrides(),[key]:alternative};
+    try{
+      await savePersonal({settings:{...(personal.settings||{}),meal_rejections:rejected,meal_overrides:overrides}});
+      render();
+    }catch(e){syncMsg('Meal swap failed');}
+  });
   if($('#profileWorkout'))$('#profileWorkout').onchange=async e=>{profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);render();};
   if($('#pomNameInput'))$('#pomNameInput').onchange=async e=>{const name=(e.target.value.trim()||'Gizmo').slice(0,20);e.target.value=name;await savePersonal({settings:{...(personal.settings||{}),pom_name:name}});render();};
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=22';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=23';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
