@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=14';
+import { DEFAULT_DATA } from './data.js?v=16';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -18,6 +18,227 @@ function myView(){return myName().toLowerCase().includes('elizabeth')?'Elizabeth
 function pomName(){return String(personal?.settings?.pom_name||'Gizmo').trim()||'Gizmo';}
 function syncMsg(t){if($('#syncStatus'))$('#syncStatus').textContent=t;}
 function todayIndex(){const d=new Date().getDay();return d===0?0:Math.min(6,d);}
+function personalProfile(){return personal?.settings?.profile_config||{};}
+function profileReady(){return personalProfile().onboarding_complete===true;}
+function dietStyle(){return personalProfile().diet_style||'balanced';}
+function foodList(key){return String(personalProfile()[key]||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);}
+function mealSchedule(){return personalProfile().meals||{
+  breakfast:{enabled:true,time:'08:00',location:'Home'},
+  lunch:{enabled:true,time:'12:30',location:'Work'},
+  afternoon:{enabled:true,time:'16:00',location:'Work'},
+  dinner:{enabled:true,time:'19:00',location:'Home'}
+};}
+function workoutGoals(){const g=personalProfile().workout_goals;return Array.isArray(g)?g:[];}
+function workoutChecks(){return personal?.settings?.workout_checks||{};}
+function barkEnabled(){return personal?.settings?.bark_reminder_enabled===true;}
+function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
+function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+function playBark(){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return false;
+  const ctx=new AC();
+  const bark=(delay,freq)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sawtooth';
+    o.frequency.setValueAtTime(freq,ctx.currentTime+delay);
+    o.frequency.exponentialRampToValueAtTime(70,ctx.currentTime+delay+.18);
+    g.gain.setValueAtTime(.0001,ctx.currentTime+delay);
+    g.gain.exponentialRampToValueAtTime(.22,ctx.currentTime+delay+.015);
+    g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+delay+.22);
+    o.connect(g);g.connect(ctx.destination);o.start(ctx.currentTime+delay);o.stop(ctx.currentTime+delay+.24);
+  };
+  bark(0,175);bark(.27,145);
+  setTimeout(()=>ctx.close().catch(()=>{}),700);
+  return true;
+}
+const MEAL_CATALOG={
+  balanced:{
+    breakfast:[
+      ['Protein shake with milk and berries',['protein','whey','milk','berries']],
+      ['Eggs, whole-grain toast and fresh fruit',['eggs','bread','fruit']],
+      ['Greek yogurt, berries and nuts',['yogurt','berries','nuts']]
+    ],
+    lunch:[
+      ['Grilled chicken, vegetables and a whole-grain side',['chicken','vegetables','whole grain']],
+      ['Salmon salad with olive oil and fruit',['salmon','salad','olive oil','fruit']],
+      ['Lean beef bowl with vegetables and beans',['beef','vegetables','beans']]
+    ],
+    afternoon:[
+      ['Protein shake plus fruit',['protein','whey','fruit']],
+      ['Swiss cheese, fruit and pistachios',['swiss','fruit','pistachios']],
+      ['Nuts or pepitas with a protein drink',['nuts','pepitas','protein']]
+    ],
+    dinner:[
+      ['Lean protein, two vegetables and a measured whole-food carbohydrate',['protein','vegetables','whole grain']],
+      ['Fish, vegetables and olive oil',['fish','vegetables','olive oil']]
+    ]
+  },
+  mediterranean:{
+    breakfast:[
+      ['Greek yogurt, berries, walnuts and cinnamon',['yogurt','berries','walnuts']],
+      ['Eggs with tomato, spinach and whole-grain toast',['eggs','tomato','spinach','bread']],
+      ['Protein coffee plus fruit and pistachios',['protein','coffee','fruit','pistachios']]
+    ],
+    lunch:[
+      ['Salmon and white-bean salad with olive oil and lemon',['salmon','beans','salad','olive oil']],
+      ['Chicken, hummus, vegetables and whole grain',['chicken','hummus','vegetables','whole grain']],
+      ['Tuna, tomato, cucumber, olives and greens',['tuna','tomato','cucumber','olives']]
+    ],
+    afternoon:[
+      ['Fruit with nuts',['fruit','nuts']],
+      ['Swiss cheese with tomato and cucumber',['swiss','tomato','cucumber']],
+      ['Protein shake with berries',['protein','berries']]
+    ],
+    dinner:[
+      ['Fish, vegetables, olive oil and legumes or whole grain',['fish','vegetables','olive oil','beans']],
+      ['Chicken with roasted vegetables and olive oil',['chicken','vegetables','olive oil']]
+    ]
+  },
+  lowcarb:{
+    breakfast:[
+      ['Protein shake with milk or unsweetened milk and berries',['protein','whey','milk','berries']],
+      ['Eggs with greens and cheese',['eggs','greens','cheese']],
+      ['Smoked salmon, cucumber and cheese',['salmon','cucumber','cheese']]
+    ],
+    lunch:[
+      ['Chicken salad with olive oil and non-starchy vegetables',['chicken','salad','olive oil','vegetables']],
+      ['Salmon with asparagus and greens',['salmon','asparagus','greens']],
+      ['Lean beef with mushrooms and green beans',['beef','mushrooms','green beans']]
+    ],
+    afternoon:[
+      ['Protein shake and pistachios',['protein','pistachios']],
+      ['Swiss cheese and cucumber',['swiss','cucumber']],
+      ['Pepitas and a protein drink',['pepitas','protein']]
+    ],
+    dinner:[
+      ['Fish or lean meat with two non-starchy vegetables',['fish','meat','vegetables']],
+      ['Chicken with asparagus, zucchini or green beans',['chicken','asparagus','zucchini','green beans']]
+    ]
+  },
+  keto:{
+    breakfast:[
+      ['Eggs with cheese and avocado',['eggs','cheese','avocado']],
+      ['Low-carb protein shake with unsweetened milk',['protein','whey','milk']],
+      ['Smoked salmon with cucumber and olive oil',['salmon','cucumber','olive oil']]
+    ],
+    lunch:[
+      ['Salmon salad with olive oil and low-carb vegetables',['salmon','salad','olive oil','vegetables']],
+      ['Chicken with avocado and greens',['chicken','avocado','greens']],
+      ['Lean beef with mushrooms and asparagus',['beef','mushrooms','asparagus']]
+    ],
+    afternoon:[
+      ['Swiss cheese and pistachios',['swiss','pistachios']],
+      ['Protein shake with unsweetened milk',['protein','whey','milk']],
+      ['Pepitas and cheese',['pepitas','cheese']]
+    ],
+    dinner:[
+      ['Fish or meat with non-starchy vegetables and olive oil',['fish','meat','vegetables','olive oil']],
+      ['Chicken with asparagus or zucchini and olive oil',['chicken','asparagus','zucchini','olive oil']]
+    ]
+  },
+  pescatarian:{
+    breakfast:[
+      ['Eggs with vegetables and fruit',['eggs','vegetables','fruit']],
+      ['Greek yogurt, berries and nuts',['yogurt','berries','nuts']],
+      ['Protein shake with berries',['protein','berries']]
+    ],
+    lunch:[
+      ['Salmon salad with olive oil and beans',['salmon','salad','olive oil','beans']],
+      ['Tuna and white-bean bowl with vegetables',['tuna','beans','vegetables']],
+      ['Shrimp bowl with vegetables and whole grain',['shrimp','vegetables','whole grain']]
+    ],
+    afternoon:[
+      ['Swiss cheese and fruit',['swiss','fruit']],
+      ['Protein shake and pistachios',['protein','pistachios']],
+      ['Pepitas and berries',['pepitas','berries']]
+    ],
+    dinner:[
+      ['Fish or shellfish with vegetables',['fish','shrimp','vegetables']],
+      ['Salmon, vegetables and a whole-food carbohydrate',['salmon','vegetables','whole grain']]
+    ]
+  },
+  vegetarian:{
+    breakfast:[
+      ['Eggs with vegetables and whole-grain toast',['eggs','vegetables','bread']],
+      ['Greek yogurt, berries and nuts',['yogurt','berries','nuts']],
+      ['Protein shake with fruit',['protein','fruit']]
+    ],
+    lunch:[
+      ['Lentil and vegetable bowl with olive oil',['lentils','vegetables','olive oil']],
+      ['Bean salad with Swiss cheese and vegetables',['beans','swiss','vegetables']],
+      ['Tofu or tempeh vegetable bowl',['tofu','tempeh','vegetables']]
+    ],
+    afternoon:[
+      ['Swiss cheese and fruit',['swiss','fruit']],
+      ['Protein shake and nuts',['protein','nuts']],
+      ['Pepitas and berries',['pepitas','berries']]
+    ],
+    dinner:[
+      ['Lentils or beans with vegetables and whole grain',['lentils','beans','vegetables','whole grain']],
+      ['Egg-based or dairy-based protein with vegetables',['eggs','cheese','vegetables']]
+    ]
+  }
+};
+function chooseMeal(slot,dayIndex){
+  const diet=MEAL_CATALOG[dietStyle()]||MEAL_CATALOG.balanced;
+  const options=diet[slot]||diet.lunch,dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  let ranked=options.map((x,idx)=>({x,idx,blocked:dislikes.some(d=>x[1].some(i=>i.includes(d)||d.includes(i))),score:likes.reduce((s,l)=>s+(x[1].some(i=>i.includes(l)||l.includes(i))?2:0),0)}));
+  let usable=ranked.filter(r=>!r.blocked);if(!usable.length)usable=ranked;
+  usable.sort((a,b)=>b.score-a.score||a.idx-b.idx);
+  return usable[dayIndex%usable.length].x[0];
+}
+function personalWorkoutFor(i){
+  const goals=workoutGoals();
+  const has=g=>goals.includes(g);
+  if(has('ski')){
+    const p=['Lower-body strength + core','Zone 2 cardio + mobility','Upper-body strength + core','Ski-leg intervals: step-ups, split squats, lateral work','Recovery cardio + balance','Full-body strength + short ski-conditioning finisher','Rest / mobility'];
+    return p[i];
+  }
+  if(has('cycling')){
+    const p=['Endurance ride','Upper-body + core strength','Bike intervals / threshold work','Recovery spin + mobility','Full-body strength','Long endurance ride','Rest'];
+    return p[i];
+  }
+  if(has('running')){
+    const p=['Easy run + mobility','Strength: legs + core','Tempo or interval run','Upper-body strength','Easy run','Long run or event-specific session','Rest'];
+    return p[i];
+  }
+  if(has('muscle')){
+    const p=['Upper pull + biceps + core','Lower body','Upper push + triceps + core','Zone 2 cardio / recovery','Upper hypertrophy','Lower body + carries','Rest'];
+    return p[i];
+  }
+  if(has('cardio')){
+    const p=['Zone 2 cardio','Full-body strength','Intervals','Recovery cardio + mobility','Zone 2 cardio','Longer cardio session','Rest'];
+    return p[i];
+  }
+  const p=['Full-body strength','Zone 2 cardio','Mobility / recovery','Full-body strength','Cardio intervals','Outdoor activity / long easy cardio','Rest'];
+  return p[i];
+}
+function mealMeta(slot){
+  const s=mealSchedule()[slot];if(!s)return'';
+  return [s.time,s.location].filter(Boolean).join(' • ');
+}
+function isMealEnabled(slot){
+  const s=mealSchedule()[slot];if(s&&s.enabled===false)return false;
+  if(personalProfile().intermittent_fasting&&slot==='breakfast')return false;
+  return true;
+}
+function reminderIncomplete(){
+  const i=todayIndex(),p=myView();
+  const slots=['breakfast','lunch','afternoon','dinner'].filter(isMealEnabled);
+  const mealsLeft=slots.filter(k=>!checks()[`${i}-${p}-${k}`]).length;
+  const workoutLeft=profile?.workout_enabled!==false&&!workoutChecks()[`${i}-${p}`]?1:0;
+  return mealsLeft+workoutLeft;
+}
+async function maybeBarkReminder(){
+  if(!session||!personal||!barkEnabled()||document.visibilityState!=='visible')return;
+  const [h,m]=barkTime().split(':').map(Number),now=new Date();
+  if(now.getHours()*60+now.getMinutes()<h*60+m||personal.settings?.last_bark_date===localDateKey())return;
+  const left=reminderIncomplete();if(!left)return;
+  if(playBark()){
+    await savePersonal({settings:{...(personal.settings||{}),last_bark_date:localDateKey()}});
+    if($('#speech'))$('#speech').textContent=`${pomName()} says: Woof! You still have ${left} item${left===1?'':'s'} to check off today.`;
+  }
+}
 
 async function signIn(){
   notice('#authMessage','');
