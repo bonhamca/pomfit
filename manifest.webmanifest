@@ -1,0 +1,11 @@
+{
+  "name": "PomFit",
+  "short_name": "PomFit",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#20231f",
+  "description": "Shared meal, grocery, prep and individualized workout planner.",
+  "icons": [{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
