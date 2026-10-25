@@ -1,21 +1,72 @@
-const CACHE='pomfit-v3';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./data.js','./manifest.webmanifest','./icon.svg'];
-self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
-self.addEventListener('activate',e=>e.waitUntil(Promise.all([
-  self.clients.claim(),
-  caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-])));
-self.addEventListener('fetch',e=>{
-  if(e.request.method!=='GET')return;
-  const u=new URL(e.request.url);
-  const dynamic = e.request.mode==='navigate' || /\/(index\.html|app\.js|data\.js|styles\.css)$/.test(u.pathname);
-  if(dynamic){
-    e.respondWith(fetch(e.request).then(resp=>{
-      const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp;
-    }).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))));
-  }else{
-    e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{
-      const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp;
-    })));
+const CACHE='pomfit-v27';
+const CORE=[
+  './?v=27',
+  './styles.css?v=27',
+  './app.js?v=27',
+  './data.js?v=27',
+  './manifest.webmanifest',
+  './icon.svg'
+];
+
+self.addEventListener('install',event=>{
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE).then(cache=>Promise.all(
+      CORE.map(url=>fetch(url,{cache:'no-store'}).then(resp=>{
+        if(resp.ok) return cache.put(url,resp.clone());
+      }).catch(()=>null))
+    ))
+  );
+});
+
+self.addEventListener('activate',event=>{
+  event.waitUntil((async()=>{
+    const keys=await caches.keys();
+    await Promise.all(keys.filter(k=>k.startsWith('pomfit-')&&k!==CACHE).map(k=>caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch',event=>{
+  if(event.request.method!=='GET') return;
+  const req=event.request;
+  const url=new URL(req.url);
+  if(url.origin!==self.location.origin) return;
+
+  const isDynamic=req.mode==='navigate' || /\/(index\.html|app\.js|data\.js|styles\.css)$/.test(url.pathname);
+  if(isDynamic){
+    event.respondWith((async()=>{
+      try{
+        const resp=await fetch(req,{cache:'no-store'});
+        if(resp && resp.ok){
+          const cache=await caches.open(CACHE);
+          cache.put(req,resp.clone()).catch(()=>{});
+        }
+        return resp;
+      }catch{
+        return (await caches.match(req))
+          || (await caches.match('./?v=27'))
+          || new Response('PomFit is temporarily offline. Reopen when connected.',{
+            status:503,
+            headers:{'Content-Type':'text/plain'}
+          });
+      }
+    })());
+    return;
   }
+
+  event.respondWith((async()=>{
+    const cached=await caches.match(req);
+    if(cached) return cached;
+    try{
+      const resp=await fetch(req);
+      if(resp && resp.ok){
+        const cache=await caches.open(CACHE);
+        cache.put(req,resp.clone()).catch(()=>{});
+      }
+      return resp;
+    }catch{
+      return new Response('',{status:503});
+    }
+  })());
 });
