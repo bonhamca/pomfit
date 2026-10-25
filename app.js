@@ -354,6 +354,10 @@ function tip(){
   return `${pomName()} says: ${message}`;
 }
 function textFor(d,k){
+  if(ui.view===myView()&&profileReady()){
+    const map={breakfast:'breakfast',lunch:'lunch',afternoon:'afternoon',dinner:'dinner'};
+    return chooseMeal(map[k],todayIndex());
+  }
   if(ui.view==='Clark')return k==='breakfast'?d.clark_am:k==='afternoon'?d.clark_afternoon:d[k];
   if(ui.view==='Elizabeth')return k==='breakfast'?d.elizabeth_breakfast:k==='afternoon'?d.elizabeth_snack:d[k];
   if(k==='breakfast')return `Clark: ${d.clark_am}\nElizabeth: ${d.elizabeth_breakfast}`;
@@ -387,6 +391,19 @@ function renderWorkout(){
   const p=ui.view==='Both'?myView():ui.view,isMe=p===myView();
   return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Personal setting; shared meals stay unchanged.</p>`:'<p class="small">You can view the plan, but the other person’s private workout log is not shared.</p>'}</div><div class="weekgrid">${menu().days.map(d=>`<div class="card"><h3>${esc(d.date)}</h3><div class="work">${esc(p==='Clark'?d.workout_c:d.workout_e)}</div></div>`).join('')}</div>`;
 }
+function renderProfile(){
+  const p=personalProfile(),m=mealSchedule(),goals=workoutGoals();
+  const goal=(g,label)=>`<label class="toggle"><input type="checkbox" data-goal="${g}" ${goals.includes(g)?'checked':''}> ${label}</label>`;
+  const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
+  return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
+  <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age||'')}"></label><label class="small">Height (in) <input id="profHeight" class="search" type="number" min="48" max="90" step=".5" value="${esc(p.height_in||'')}"></label><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb||'')}"></label></div>
+  <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select></div>
+  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label></div>
+  <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
+  <div class="metric"><b>Workout goals</b><div class="controls">${goal('muscle','Muscle building')}${goal('cardio','Cardio fitness')}${goal('ski','Train for skiing')}${goal('cycling','Train for cycling')}${goal('running','Train for running')}</div></div>
+  ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
+  </div><button class="primary" id="saveProfileBtn">Save profile</button></div>`;
+}
 function renderAccount(){
   return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v14<div class="small">If this is not v14, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
@@ -396,7 +413,7 @@ function render(){
   $$('#profileSeg button').forEach(b=>b.classList.toggle('active',b.dataset.p===ui.view));
   $$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===ui.tab));
   $('#workoutToggle').checked=workoutShown(ui.view);
-  const pages={today:renderToday,week:renderWeek,prep:renderPrep,grocery:renderGrocery,season:renderSeason,workout:renderWorkout,account:renderAccount};
+  const pages={today:renderToday,week:renderWeek,prep:renderPrep,grocery:renderGrocery,season:renderSeason,workout:renderWorkout,profile:renderProfile,account:renderAccount};
   $('#content').innerHTML=pages[ui.tab]();bindDynamic();
 }
 async function savePersonal(patch){
@@ -414,7 +431,18 @@ function bindDynamic(){
   $$('[data-g]').forEach(x=>x.onchange=()=>{saveShared({groceries:groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
-  if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
+  if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
+  if($('#dietStyle'))$('#dietStyle').value=dietStyle();
+  if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
+    const goals=$('[data-goal]:checked').map(x=>x.dataset.goal);
+    const meals={};
+    ['breakfast','lunch','afternoon','dinner'].forEach(k=>{
+      meals[k]={enabled:!!$('[data-meal-enabled="'+k+'"]')?.checked,time:$('[data-meal-time="'+k+'"]')?.value||'',location:$('[data-meal-location="'+k+'"]')?.value||''};
+    });
+    const next={...personalProfile(),onboarding_complete:true,age:Number($('#profAge').value)||null,height_in:Number($('#profHeight').value)||null,weight_lb:Number($('#profWeight').value)||null,diet_style:$('#dietStyle').value,food_likes:$('#foodLikes').value.trim(),food_dislikes:$('#foodDislikes').value.trim(),intermittent_fasting:$('#ifToggle').checked,fasting_start:$('#ifStart').value,fasting_end:$('#ifEnd').value,workout_goals:goals,meals};
+    await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
+    ui.tab='today';render();
+  };
   if($('#profileWorkout'))$('#profileWorkout').onchange=async e=>{profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);render();};
   if($('#pomNameInput'))$('#pomNameInput').onchange=async e=>{const name=(e.target.value.trim()||'Gizmo').slice(0,20);e.target.value=name;await savePersonal({settings:{...(personal.settings||{}),pom_name:name}});render();};
   if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=14';
