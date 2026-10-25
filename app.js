@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=37';
+import { DEFAULT_DATA } from './data.js?v=38';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -262,7 +262,7 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=37');
+    const audio=new Audio('./Gizmo-bark.mp3?v=38');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -458,17 +458,11 @@ function mealCandidates(slot){
 function chooseMeal(slot,dayIndex,key=''){
   if(key&&mealOverrides()[key])return mealOverrides()[key];
   const candidates=mealCandidates(slot);
-  const rejected=new Set(mealRejections().map(x=>String(x).toLowerCase()));
-  const usable=candidates.filter(x=>!rejected.has(x.toLowerCase()));
-  const pool=usable.length?usable:candidates;
-  return pool[dayIndex%pool.length]||'Choose a compatible meal';
+  return candidates[dayIndex%candidates.length]||'Choose a compatible meal';
 }
 function nextMealAlternative(slot,current){
   const candidates=mealCandidates(slot);
-  const rejected=new Set([...mealRejections(),current].map(x=>String(x).toLowerCase()));
-  return candidates.find(x=>!rejected.has(x.toLowerCase()))
-    || candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())
-    || current;
+  return candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())||current;
 }
 function personalWorkoutFor(i){
   const goals=workoutGoals(),has=g=>goals.includes(g),sculpt=has('sculpt');
@@ -776,7 +770,7 @@ async function handleSession(s){
 
 function menu(){return shared?.menu?.days?shared.menu:DEFAULT_DATA;}
 function groceries(){return Array.isArray(shared?.groceries)?shared.groceries:defaultGroceries();}
-function prep(){return Array.isArray(shared?.prep_tasks)?shared.prep_tasks:defaultPrep();}
+function prep(){return generatedPrepTasks();}
 function checks(){return personal?.settings?.meal_checks||{};}
 function workoutShown(view){if(view==='Both')return true;if(view===myView())return profile?.workout_enabled!==false;return true;}
 function tip(){
@@ -848,6 +842,56 @@ function plannedWorkoutFor(p,i,d){
   }
   return p==='Clark'?d.workout_c:d.workout_e;
 }
+function mealTitle(text){
+  const s=String(text||'').replace(/\s+/g,' ').trim();
+  if(!s)return 'Meal';
+  return (s.split(':')[0]||s).replace(/\.$/,'').trim();
+}
+function prepInstructionForMeal(text,slot='meal'){
+  const t=String(text||''),low=t.toLowerCase(),title=mealTitle(t);
+  if(!t)return '';
+  if(/\bfast\b/.test(low))return 'No food prep needed; have your approved fasting drinks ready.';
+  if(/whey|protein shake|chike|protein drink/.test(low)){
+    return `${title}: pre-portion powder; chill milk/water and any fruit or nuts you plan to use.`;
+  }
+  const proteins=['salmon','branzino','tilapia','cod','trout','sole','catfish','shrimp','tuna','chicken','beef','steak','sirloin','hot dog','eggs','egg'];
+  const vegetables=['asparagus','broccoli','green beans','zucchini','mushrooms','spinach','romaine','cucumber','tomato','peppers','salad','greens'];
+  const p=[...new Set(proteins.filter(x=>low.includes(x)))];
+  const v=[...new Set(vegetables.filter(x=>low.includes(x)))];
+  if(slot==='lunch'){
+    return `${title}: pack ahead${p.length?' and portion '+p.slice(0,2).join('/') : ''}${v.length?'; wash/chop '+v.slice(0,3).join(', '):''}. Keep dressing/sauce separate until eating.`;
+  }
+  if(slot==='afternoon'||slot==='breakfast'){
+    return `${title}: portion the ingredients in advance so it is ready at the planned time.`;
+  }
+  return `${title}: ${p.length?'thaw/portion '+p.slice(0,2).join('/'):'set out the main protein'}${v.length?'; wash/chop '+v.slice(0,3).join(', '):'; prep the listed vegetables'}. Measure sauce/seasoning before cooking.`;
+}
+function dayPrepText(d,i){
+  const parts=[];
+  if(ui.view===myView()&&profileReady()){
+    const breakfast=textFor(d,'breakfast',i),lunch=textFor(d,'lunch',i),afternoon=textFor(d,'afternoon',i);
+    if(breakfast)parts.push(prepInstructionForMeal(breakfast,'breakfast'));
+    if(lunch)parts.push(prepInstructionForMeal(lunch,'lunch'));
+    if(afternoon)parts.push(prepInstructionForMeal(afternoon,'afternoon'));
+  }
+  parts.push(prepInstructionForMeal(d.dinner,'dinner'));
+  return parts.filter(Boolean).join(' ');
+}
+function generatedPrepTasks(){
+  const old=Array.isArray(shared?.prep_tasks)?shared.prep_tasks:[];
+  const checked=Object.fromEntries(old.map(x=>[x.id,!!x.checked]));
+  const days=menu().days.map((d,i)=>({
+    id:`dinner-prep-${i}`,
+    text:`${d.date}: ${prepInstructionForMeal(d.dinner,'dinner')}`,
+    checked:checked[`dinner-prep-${i}`]||false
+  }));
+  const generic=[
+    {id:'prep-pack','text':'Pack next-day lunches the night before; keep dressings, sauces, nuts/seeds and cheese separate until eating.'},
+    {id:'prep-portion','text':'Portion proteins, oils/fats, nuts/seeds and other calorie-dense add-ons before serving.'},
+    {id:'prep-produce','text':'Wash/chop commonly used vegetables and salad produce so substitutions are easy.'}
+  ].map(x=>({...x,checked:checked[x.id]||false}));
+  return [...days,...generic];
+}
 function dayCard(d,i){
   let w='';
   if(workoutShown(ui.view)){
@@ -860,7 +904,7 @@ function dayCard(d,i){
       w=`<div class="work">${box}<b>Workout:</b> ${esc(workout)}</div>`;
     }
   }
-  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${w}<div class="prep"><b>Prep:</b> ${esc(d.prep)}</div></section>`;
+  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i))}</div></section>`;
 }
 function renderToday(){
   const n=personal?.notes?.free_text||'',summary=profileSummaryText();
@@ -899,7 +943,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v37<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v38<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1008,14 +1052,17 @@ function bindDynamic(){
         const next=nextSharedDinner(current);
         const updatedMenu=JSON.parse(JSON.stringify(menu()));
         updatedMenu.days[day]={...updatedMenu.days[day],dinner:next};
-        await saveShared({menu:updatedMenu});
+        const previousMenu=shared.menu;
+        shared={...shared,menu:updatedMenu};
+        const updatedPrep=generatedPrepTasks();
+        shared={...shared,menu:previousMenu};
+        await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
         render();
         return;
       }
       const alternative=nextMealAlternative(slot,current);
-      const rejected=[...new Set([...mealRejections(),current])];
       const overrides={...mealOverrides(),[key]:alternative};
-      await savePersonal({settings:{...(personal.settings||{}),meal_rejections:rejected,meal_overrides:overrides}});
+      await savePersonal({settings:{...(personal.settings||{}),meal_overrides:overrides}});
       render();
     }catch(e){syncMsg('Meal swap failed');}
   });
@@ -1025,7 +1072,7 @@ function bindDynamic(){
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
   if($('#replayTourBtn'))$('#replayTourBtn').onclick=()=>startTour(true);
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=37';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=38';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -1044,7 +1091,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=37',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=38',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
