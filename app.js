@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=25';
+import { DEFAULT_DATA } from './data.js?v=26';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -135,8 +135,8 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const first=new Audio('./pomeranian-bark.mp3?v=25');
-    const second=new Audio('./pomeranian-bark.mp3?v=25');
+    const first=new Audio('./pomeranian-bark.mp3?v=26');
+    const second=new Audio('./pomeranian-bark.mp3?v=26');
     first.preload='auto';second.preload='auto';
     first.volume=.9;second.volume=.82;
     first.playbackRate=1.38;second.playbackRate=1.48;
@@ -498,8 +498,11 @@ async function maybeBarkReminder(){
 
 async function signIn(){
   notice('#authMessage','');
-  const {error}=await supabase.auth.signInWithPassword({email:$('#loginEmail').value.trim(),password:$('#loginPassword').value});
-  if(error)notice('#authMessage',error.message,true);
+  const email=$('#loginEmail')?.value.trim()||'',password=$('#loginPassword')?.value||'';
+  if(!email||!password)return notice('#authMessage','Enter both email and password.',true);
+  const {data,error}=await supabase.auth.signInWithPassword({email,password});
+  if(error)return notice('#authMessage',error.message,true);
+  if(data?.session)await handleSession(data.session);
 }
 async function signUp(){
   notice('#authMessage','');
@@ -644,6 +647,22 @@ function meal(d,i,k,label){
   const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">${k==='dinner'?'Change dinner for both of us':'Not this meal — give me another'}</button>`:'';
   return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${alt}</div>`;
 }
+function scheduledWorkoutOverride(p,i,d){
+  const raw=p==='Clark'?d.workout_c:d.workout_e;
+  const next=menu().days[i+1];
+  const nextRaw=next?(p==='Clark'?next.workout_c:next.workout_e):'';
+  const event=/\b(ftp|test|race|event|competition|taper)\b/i;
+  const protectedDay=/no leg|fresh for|recovery as scheduled|program ride|power zone program|low impact|rest\b/i;
+  if(event.test(raw)||protectedDay.test(raw))return raw;
+  if(event.test(nextRaw))return raw;
+  return '';
+}
+function plannedWorkoutFor(p,i,d){
+  const fixed=scheduledWorkoutOverride(p,i,d);
+  if(fixed)return fixed;
+  if(p===myView()&&profileReady())return personalWorkoutFor(i);
+  return p==='Clark'?d.workout_c:d.workout_e;
+}
 function dayCard(d,i){
   let w='';
   if(workoutShown(ui.view)){
@@ -652,7 +671,7 @@ function dayCard(d,i){
     }else{
       const id=`${i}-${ui.view}`,isMine=ui.view===myView();
       const box=isMine?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';
-      const workout=isMine&&profileReady()?personalWorkoutFor(i):(ui.view==='Clark'?d.workout_c:d.workout_e);
+      const workout=plannedWorkoutFor(ui.view,i,d);
       w=`<div class="work">${box}<b>Workout:</b> ${esc(workout)}</div>`;
     }
   }
@@ -673,7 +692,7 @@ function renderGrocery(){
 function renderSeason(){return `<div class="card"><h2>Seasoning library</h2><input id="seasonSearch" class="search" placeholder="Search soy, fish, asparagus, smoky…"><div class="season" id="seasonList">${menu().seasonings.map(s=>`<details data-search="${esc((s.name+' '+s.best+' '+s.recipe).toLowerCase())}"><summary>${esc(s.name)} <span class="small">• ${esc(s.sodium)} sodium</span></summary><p><b>Best with:</b> ${esc(s.best)}</p><p><b>Mix:</b> ${esc(s.recipe)}</p></details>`).join('')}</div></div>`;}
 function renderWorkout(){
   const p=ui.view==='Both'?myView():ui.view,isMe=p===myView();
-  return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Check off each workout when finished.</p>`:'<p class="small">You can view the plan, but only that person can mark a workout complete.</p>'}</div><div class="weekgrid">${menu().days.map((d,i)=>{const id=`${i}-${p}`,box=isMe?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';const workout=isMe&&profileReady()?personalWorkoutFor(i):(p==='Clark'?d.workout_c:d.workout_e);return `<div class="card"><h3>${esc(d.date)}</h3><div class="work">${box}${esc(workout)}</div></div>`;}).join('')}</div>`;
+  return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Check off each workout when finished.</p>`:'<p class="small">You can view the plan, but only that person can mark a workout complete.</p>'}</div><div class="weekgrid">${menu().days.map((d,i)=>{const id=`${i}-${p}`,box=isMe?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';const workout=plannedWorkoutFor(p,i,d);return `<div class="card"><h3>${esc(d.date)}</h3><div class="work">${box}${esc(workout)}</div></div>`;}).join('')}</div>`;
 }
 function renderProfile(){
   const p=personalProfile(),m=mealSchedule(),goals=workoutGoals(),equipment=equipmentList();
@@ -692,7 +711,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v25<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v26<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -788,18 +807,22 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=25';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=26';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
-$('#showSignupBtn').onclick=()=>{$('#loginPanel').classList.add('hidden');$('#signupPanel').classList.remove('hidden');};
-$('#showLoginBtn').onclick=()=>{$('#signupPanel').classList.add('hidden');$('#loginPanel').classList.remove('hidden');};
-$('#signInBtn').onclick=signIn;$('#signUpBtn').onclick=signUp;$('#createHouseholdBtn').onclick=createHousehold;$('#joinHouseholdBtn').onclick=joinHousehold;$('#setupSignOutBtn').onclick=signOut;
-$('#profileSeg').onclick=e=>{if(e.target.dataset.p){ui.view=e.target.dataset.p;render();}};
-$('#nav').onclick=e=>{if(e.target.dataset.tab){ui.tab=e.target.dataset.tab;render();}};
-$('#workoutToggle').onchange=async e=>{if(ui.view===myView()){profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);}render();};
-$('#profileBtn').onclick=()=>{ui.tab='profile';render();};
-$('#accountBtn').onclick=()=>{ui.tab='account';render();};
+if($('#showSignupBtn'))$('#showSignupBtn').onclick=()=>{$('#loginPanel')?.classList.add('hidden');$('#signupPanel')?.classList.remove('hidden');};
+if($('#showLoginBtn'))$('#showLoginBtn').onclick=()=>{$('#signupPanel')?.classList.add('hidden');$('#loginPanel')?.classList.remove('hidden');};
+if($('#signInBtn'))$('#signInBtn').onclick=signIn;
+if($('#signUpBtn'))$('#signUpBtn').onclick=signUp;
+if($('#createHouseholdBtn'))$('#createHouseholdBtn').onclick=createHousehold;
+if($('#joinHouseholdBtn'))$('#joinHouseholdBtn').onclick=joinHousehold;
+if($('#setupSignOutBtn'))$('#setupSignOutBtn').onclick=signOut;
+if($('#profileSeg'))$('#profileSeg').onclick=e=>{if(e.target.dataset.p){ui.view=e.target.dataset.p;render();}};
+if($('#nav'))$('#nav').onclick=e=>{if(e.target.dataset.tab){ui.tab=e.target.dataset.tab;render();}};
+if($('#workoutToggle'))$('#workoutToggle').onchange=async e=>{if(ui.view===myView()){profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);}render();};
+if($('#profileBtn'))$('#profileBtn').onclick=()=>{ui.tab='profile';render();};
+if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
