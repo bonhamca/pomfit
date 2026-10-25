@@ -77,10 +77,23 @@ async function createHousehold(){
   await load();await seed();ui.tab='account';await enterApp();
 }
 async function joinHousehold(){
-  notice('#setupMessage','');const code=$('#joinCode').value.trim().toUpperCase();
+  notice('#setupMessage','');
+  const {data:{session:liveSession}}=await supabase.auth.getSession();
+  if(!liveSession?.access_token){
+    await supabase.auth.signOut().catch(()=>{});
+    show('authShell');
+    return notice('#authMessage','Your sign-in is not active in this PomFit window. Please sign in here, then join the household.',true);
+  }
+  const code=$('#joinCode').value.trim().toUpperCase();
   if(!code)return notice('#setupMessage','Enter the household invite code.',true);
   const r=await supabase.rpc('join_household',{p_invite_code:code});
-  if(r.error)return notice('#setupMessage',r.error.message,true);
+  if(r.error){
+    if(r.error.code==='42501'||/permission denied/i.test(r.error.message||'')){
+      show('authShell');
+      return notice('#authMessage','Your PomFit session expired or is not active in this window. Please sign in again here, then join the household.',true);
+    }
+    return notice('#setupMessage',r.error.message,true);
+  }
   await load();await enterApp();
 }
 async function enterApp(){show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');}
