@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=11';
+import { DEFAULT_DATA } from './data.js?v=13';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -15,6 +15,7 @@ function show(id){['authShell','setupShell','appShell'].forEach(x=>$('#'+x).clas
 function notice(id,msg,bad=false){const e=$(id);if(!msg){e.classList.add('hidden');return;}e.textContent=msg;e.className='notice'+(bad?' error':'');}
 function myName(){return profile?.display_name||session?.user?.user_metadata?.display_name||session?.user?.email?.split('@')[0]||'Me';}
 function myView(){return myName().toLowerCase().includes('elizabeth')?'Elizabeth':'Clark';}
+function pomName(){return String(personal?.settings?.pom_name||'Gizmo').trim()||'Gizmo';}
 function syncMsg(t){if($('#syncStatus'))$('#syncStatus').textContent=t;}
 function todayIndex(){const d=new Date().getDay();return d===0?0:Math.min(6,d);}
 
@@ -119,9 +120,17 @@ function checks(){return personal?.settings?.meal_checks||{};}
 function workoutShown(view){if(view==='Both')return true;if(view===myView())return profile?.workout_enabled!==false;return true;}
 function tip(){
   const i=todayIndex();
-  if(ui.view==='Clark'){if(i===0)return 'Pom says: keep today easy—FTP tomorrow. Salmon lunch, chili dinner, no leg lifting.';if(i===1)return 'FTP day: fuel if needed, no strength afterward.';return 'Protein first, vegetables second, treats measured.';}
-  if(ui.view==='Elizabeth')return 'Chike can be hot or iced. Mix first, then warm—do not boil.';
-  return 'Shared dinners, individual portions. Cook once and reserve tomorrow’s lunch.';
+  let message;
+  if(ui.view==='Clark'){
+    if(i===0)message='Keep today easy—FTP tomorrow. Salmon lunch, chili dinner, no leg lifting.';
+    else if(i===1)message='FTP day: fuel if needed, no strength afterward.';
+    else message='Protein first, vegetables second, treats measured.';
+  } else if(ui.view==='Elizabeth'){
+    message='Chike can be hot or iced. Mix first, then warm—do not boil.';
+  } else {
+    message='Shared dinners, individual portions. Cook once and reserve tomorrow’s lunch.';
+  }
+  return `${pomName()} says: ${message}`;
 }
 function textFor(d,k){
   if(ui.view==='Clark')return k==='breakfast'?d.clark_am:k==='afternoon'?d.clark_afternoon:d[k];
@@ -158,7 +167,7 @@ function renderWorkout(){
   return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Personal setting; shared meals stay unchanged.</p>`:'<p class="small">You can view the plan, but the other person’s private workout log is not shared.</p>'}</div><div class="weekgrid">${menu().days.map(d=>`<div class="card"><h3>${esc(d.date)}</h3><div class="work">${esc(p==='Clark'?d.workout_c:d.workout_e)}</div></div>`).join('')}</div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Elizabeth creates her own PomFit account, then enters this code once.</div></div></div><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Elizabeth creates her own PomFit account, then enters this code once.</div></div></div><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -186,6 +195,7 @@ function bindDynamic(){
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#profileWorkout'))$('#profileWorkout').onchange=async e=>{profile={...profile,workout_enabled:e.target.checked};await supabase.from('profiles').update({workout_enabled:e.target.checked,updated_at:new Date().toISOString()}).eq('user_id',session.user.id);render();};
+  if($('#pomNameInput'))$('#pomNameInput').onchange=async e=>{const name=(e.target.value.trim()||'Gizmo').slice(0,20);e.target.value=name;await savePersonal({settings:{...(personal.settings||{}),pom_name:name}});render();};
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
