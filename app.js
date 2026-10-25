@@ -27,7 +27,7 @@ async function signUp(){
   notice('#authMessage','');
   const name=$('#signupName').value.trim(),email=$('#signupEmail').value.trim(),password=$('#signupPassword').value;
   if(!name)return notice('#authMessage','Please enter a name.',true);
-  const {data,error}=await supabase.auth.signUp({email,password,options:{data:{display_name:name}}});
+  const {data,error}=await supabase.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:'https://bonhamca.github.io/pomfit/'}});
   if(error)return notice('#authMessage',error.message,true);
   if(!data.session)notice('#authMessage','Account created. Check your email for the confirmation link, then sign in.');
 }
