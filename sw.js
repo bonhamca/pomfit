@@ -1,9 +1,9 @@
-const CACHE='pomfit-v29';
+const CACHE='pomfit-v30';
 const CORE=[
-  './?v=29',
-  './styles.css?v=29',
-  './app.js?v=29',
-  './data.js?v=29',
+  './?v=30',
+  './styles.css?v=30',
+  './app.js?v=30',
+  './data.js?v=30',
   './manifest.webmanifest',
   './icon.svg'
 ];
@@ -45,7 +45,7 @@ self.addEventListener('fetch',event=>{
         return resp;
       }catch{
         return (await caches.match(req))
-          || (await caches.match('./?v=29'))
+          || (await caches.match('./?v=30'))
           || new Response('PomFit is temporarily offline. Reopen when connected.',{
             status:503,
             headers:{'Content-Type':'text/plain'}
