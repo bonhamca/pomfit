@@ -437,16 +437,16 @@ async function saveShared(patch){
 }
 let noteTimer;
 function bindDynamic(){
-  $('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
-  $('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
+  $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
+  $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
   $$('[data-prep]').forEach(x=>x.onchange=()=>{saveShared({prep_tasks:prep().map(t=>t.id===x.dataset.prep?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
   $$('[data-g]').forEach(x=>x.onchange=()=>{saveShared({groceries:groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
-  if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
+  if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#dietStyle'))$('#dietStyle').value=dietStyle();
   if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
-    const goals=$('[data-goal]:checked').map(x=>x.dataset.goal);
+    const goals=$$('[data-goal]:checked').map(x=>x.dataset.goal);
     const meals={};
     ['breakfast','lunch','afternoon','dinner'].forEach(k=>{
       meals[k]={enabled:!!$('[data-meal-enabled="'+k+'"]')?.checked,time:$('[data-meal-time="'+k+'"]')?.value||'',location:$('[data-meal-location="'+k+'"]')?.value||''};
