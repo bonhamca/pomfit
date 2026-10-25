@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#20231f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="PomFit" />
+  <title>PomFit</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="authShell" class="auth-shell">
+    <div class="auth-card">
+      <div class="brand-row"><div class="pom-mini">🐾</div><div><h1>PomFit</h1><p>Shared meals. Personal goals.</p></div></div>
+      <div id="authMessage" class="notice hidden"></div>
+      <div id="loginPanel">
+        <h2>Sign in</h2>
+        <label>Email<input id="loginEmail" type="email" autocomplete="email" /></label>
+        <label>Password<input id="loginPassword" type="password" autocomplete="current-password" /></label>
+        <button id="signInBtn" class="primary">Sign in</button>
+        <button id="showSignupBtn" class="ghost">Create PomFit account</button>
+      </div>
+      <div id="signupPanel" class="hidden">
+        <h2>Create account</h2>
+        <label>Name<input id="signupName" type="text" placeholder="Clark or Elizabeth" autocomplete="name" /></label>
+        <label>Email<input id="signupEmail" type="email" autocomplete="email" /></label>
+        <label>Password<input id="signupPassword" type="password" minlength="8" autocomplete="new-password" /></label>
+        <button id="signUpBtn" class="primary">Create account</button>
+        <button id="showLoginBtn" class="ghost">Back to sign in</button>
+      </div>
+    </div>
+  </div>
+  <div id="setupShell" class="auth-shell hidden">
+    <div class="auth-card">
+      <div class="brand-row"><div class="pom-mini">🐾</div><div><h1>Set up household</h1><p>One dinner plan and grocery list; personal workouts remain separate.</p></div></div>
+      <div id="setupMessage" class="notice hidden"></div>
+      <button id="createHouseholdBtn" class="primary">Create Bonham household</button>
+      <div class="divider">or</div>
+      <label>Join code<input id="joinCode" type="text" maxlength="8" autocapitalize="characters" placeholder="8-character code" /></label>
+      <button id="joinHouseholdBtn" class="secondary">Join household</button>
+      <button id="setupSignOutBtn" class="ghost">Sign out</button>
+    </div>
+  </div>
+  <div id="appShell" class="app hidden">
+    <header>
+      <div class="pomWrap" aria-hidden="true"><div class="pom"><span class="ear l"></span><span class="ear r"></span><span class="eye l"></span><span class="eye r"></span><span class="muzzle"></span><span class="nose"></span><span class="tongue"></span></div></div>
+      <div class="title"><h1>PomFit</h1><p id="headerSub">Shared planner</p></div>
+      <button id="accountBtn" class="icon-btn" title="Account">•••</button>
+    </header>
+    <div id="syncStatus" class="sync-status">Connecting…</div>
+    <div id="speech" class="speech"></div>
+    <div class="controls">
+      <div class="seg" id="profileSeg"><button data-p="Clark" class="active">Clark</button><button data-p="Elizabeth">Elizabeth</button><button data-p="Both">Both</button></div>
+      <label class="toggle"><input type="checkbox" id="workoutToggle" checked /> Show workouts</label>
+    </div>
+    <nav id="nav"><button data-tab="today" class="active">Today</button><button data-tab="week">Week</button><button data-tab="prep">Prep</button><button data-tab="grocery">Grocery</button><button data-tab="season">Seasonings</button><button data-tab="workout">Workout</button><button data-tab="account">Account</button></nav>
+    <main id="content"></main>
+    <div class="footer">Shared planning syncs through your private PomFit household. Personal workout notes and measurements remain private to each signed-in account.</div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
