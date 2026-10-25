@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=40';
+import { DEFAULT_DATA } from './data.js?v=41';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,9 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
+const APP_VERSION=41;
 let ui={view:'Clark',tab:'today'};
+let groceryMode='all';
 let profileFormDirty=false;
 const TOUR_VERSION=1;
 let tour={active:false,index:0,replay:false};
@@ -20,7 +22,7 @@ function tourSteps(){
     {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household so everyone stays synchronized.'},
     {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” when you simply want something different today. It does not mark the meal as disliked. Dinner changes are labeled for the whole household.'},
     {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority so PomFit does not stack conflicting leg strength or HIIT on top of them.'},
-    {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Your Profile, workout completion, measurements and private notes are personal to your signed-in account.'},
+    {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Use the Grocery screen to confirm what is available, mark an item Unavailable, then either shop for it or let PomFit change affected meals. Your Profile, workout completion, measurements and private notes are personal.'},
     {tab:'today',title:'6. Ask for a little more food',body:'If you are still hungry, use “I’m still hungry — what can I eat?” PomFit suggests a small add-on that respects your diet, disliked foods and fasting window.'},
     {tab:'account',title:'7. Reminders and Gizmo',body:`In Account you can rename your Pom, test ${pomName()}’s bark, turn bark reminders on or off, choose the reminder time, update PomFit and replay this tour anytime.`},
     {tab:'today',title:'You’re ready',body:'Use Today for the daily plan, Profile whenever your goals or equipment change, and Week to look ahead. You can replay this walkthrough from Account whenever you want.'}
@@ -297,7 +299,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=40');
+    const audio=new Audio('./Gizmo-bark.mp3?v=41');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -805,6 +807,81 @@ async function handleSession(s){
 
 function menu(){return shared?.menu?.days?shared.menu:DEFAULT_DATA;}
 function groceries(){return Array.isArray(shared?.groceries)?shared.groceries:defaultGroceries();}
+function groceryActive(){return groceries().filter(x=>x.resolved!==true);}
+function groceryUnchecked(){return groceryActive().filter(x=>!x.checked&&!x.unavailable);}
+function groceryUnavailable(){return groceryActive().filter(x=>x.unavailable===true);}
+function normFood(v){return String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+function prefMatchesText(pref,text){
+  const p=normFood(pref),t=normFood(text);
+  if(!p||!t)return false;
+  const ps=p.endsWith('s')?p.slice(0,-1):p;
+  return t.includes(p)||t.includes(ps);
+}
+function groceryPreference(item){
+  const dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  const dislike=dislikes.find(x=>prefMatchesText(x,item.text));
+  const like=likes.find(x=>prefMatchesText(x,item.text));
+  return {dislike,like};
+}
+const GROCERY_TERMS=[
+  'green beans','whole grain','orange juice','olive oil','liquid smoke','soy sauce','worcestershire',
+  'ground beef','black beans','kidney beans','pumpkin seeds','pepitas','pistachios','parmesan',
+  'salmon','branzino','sea bass','chicken','tilapia','sirloin','flank','sole','catfish','shrimp',
+  'beef','hot dog','eggs','egg','swiss','milk','whey','chike','asparagus','broccoli','zucchini',
+  'mushrooms','spinach','romaine','cucumber','tomato','peppers','onion','garlic','ginger','lemon',
+  'lime','dill','parsley','cilantro','avocado','grapefruit','berries','peas','beans','harissa',
+  'butter','capers','bread','bun','rice','potato','nuts','seeds'
+];
+function groceryTerms(text){
+  const t=normFood(text);
+  return [...new Set(GROCERY_TERMS.filter(term=>t.includes(normFood(term))))];
+}
+function unavailableTerms(){
+  return [...new Set(groceryUnavailable().flatMap(x=>groceryTerms(x.text)))];
+}
+function mealUnavailableTerms(text){
+  const t=normFood(text),terms=unavailableTerms();
+  return terms.filter(term=>t.includes(normFood(term)));
+}
+function affectedMeals(){
+  const out=[];
+  menu().days.forEach((d,i)=>{
+    const dinnerTerms=mealUnavailableTerms(d.dinner);
+    if(dinnerTerms.length)out.push({day:i,slot:'dinner',label:d.date,text:d.dinner,terms:dinnerTerms,shared:true});
+    if(ui.view===myView()&&profileReady()){
+      ['breakfast','lunch','afternoon'].forEach(slot=>{
+        const text=textFor(d,slot,i),terms=mealUnavailableTerms(text);
+        if(text&&terms.length)out.push({day:i,slot,label:d.date,text,terms,shared:false});
+      });
+    }
+  });
+  return out;
+}
+function sharedDinnerReplacement(current){
+  const unavailable=unavailableTerms(),dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  let choices=sharedDinnerAlternatives()
+    .filter(x=>x!==current)
+    .filter(x=>!unavailable.some(t=>normFood(x).includes(normFood(t))));
+  const clean=choices.filter(x=>!dislikes.some(d=>prefMatchesText(d,x)));
+  if(clean.length)choices=clean;
+  choices.sort((a,b)=>{
+    const sa=likes.reduce((n,l)=>n+(prefMatchesText(l,a)?1:0),0);
+    const sb=likes.reduce((n,l)=>n+(prefMatchesText(l,b)?1:0),0);
+    return sb-sa;
+  });
+  return choices[0]||nextSharedDinner(current);
+}
+function personalMealReplacement(slot,current){
+  const unavailable=unavailableTerms();
+  const choices=mealCandidates(slot)
+    .filter(x=>x!==current)
+    .filter(x=>!unavailable.some(t=>normFood(x).includes(normFood(t))));
+  return choices[0]||nextMealAlternative(slot,current);
+}
+function grocerySummary(){
+  const total=groceryActive().length,checked=groceryActive().filter(x=>x.checked).length;
+  return {total,checked,unchecked:groceryUnchecked().length,unavailable:groceryUnavailable().length};
+}
 function prep(){return generatedPrepTasks();}
 function checks(){return personal?.settings?.meal_checks||{};}
 function workoutShown(view){if(view==='Both')return true;if(view===myView())return profile?.workout_enabled!==false;return true;}
@@ -943,17 +1020,32 @@ function dayCard(d,i){
   return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${drink}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i))}</div></section>`;
 }
 function renderToday(){
-  const n=personal?.notes?.free_text||'',summary=profileSummaryText();
+  const n=personal?.notes?.free_text||'',summary=profileSummaryText(),gs=grocerySummary();
   const profileCard=ui.view===myView()?`<div class="card profile-status"><div class="dayhead"><div><h3>My Profile — ${esc(myName())}</h3><div class="small"><b>Diet:</b> ${esc(summary.diet)}<br><b>Training:</b> ${esc(summary.goals)}</div></div><span class="badge ${vitalsComplete()?'ok-badge':'warn-badge'}">${vitalsComplete()?'SAVED':'VITALS NEEDED'}</span></div><button class="secondary" id="todayProfileBtn">${vitalsComplete()?'Edit my profile':'Finish age, height & weight'}</button></div>`:'';
+  const groceryCard=`<div class="card grocery-readiness"><div class="dayhead"><div><h3>Weekly groceries</h3><div class="small">${gs.checked} of ${gs.total} confirmed${gs.unavailable?` • ${gs.unavailable} unavailable`:''}.</div></div><span class="badge ${gs.unchecked===0&&gs.unavailable===0?'ok-badge':'warn-badge'}">${gs.unchecked===0&&gs.unavailable===0?'READY':'CHECK'}</span></div><p class="small">Are the groceries needed for this week available? Confirm what you have or bought. If something cannot be obtained, mark it Unavailable and PomFit can offer menu changes.</p><button class="secondary" id="weeklyGroceryBtn">Check weekly groceries</button></div>`;
   const hunger=ui.view===myView()?'<div class="card hunger-card"><h3>Still hungry?</h3><p class="small">Get a small add-on that fits your saved diet, dislikes and fasting window.</p><button class="secondary" id="hungerBtn">I’m still hungry — what can I eat?</button><div id="hungerResult"></div></div>':'';
-  return profileCard+dayCard(menu().days[todayIndex()],todayIndex())+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
+  return profileCard+groceryCard+dayCard(menu().days[todayIndex()],todayIndex())+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
 }
 function renderWeek(){return `<div class="weekgrid">${menu().days.map(dayCard).join('')}</div>`;}
 function renderPrep(){return `<div class="card"><h2>Shared meal prep</h2><ul class="list">${prep().map(x=>`<li><input type="checkbox" data-prep="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('')}</ul></div>`;}
 function renderGrocery(){
-  const cats={};groceries().forEach(x=>(cats[x.category]??=[]).push(x));let h='<div class="gcols">';
-  for(const [cat,items] of Object.entries(cats))h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list">${items.map(x=>`<li><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('')}</ul></section>`;
-  return h+'</div><div class="card"><button class="ghost" id="resetG">Reset shared grocery checks</button></div>';
+  const all=groceryActive(),visible=groceryMode==='needs'?all.filter(x=>!x.checked||x.unavailable):all;
+  const cats={};visible.forEach(x=>(cats[x.category]??=[]).push(x));
+  const gs=grocerySummary(),affected=affectedMeals();
+  let h=`<div class="card grocery-audit"><h2>Are this week’s groceries available?</h2><p>Check items you already have or have purchased. If an item cannot be obtained, mark it <b>Unavailable</b>. PomFit will not change meals merely because an item is unchecked.</p><div class="small"><b>${gs.checked}</b> confirmed • <b>${gs.unchecked}</b> still to get/confirm • <b>${gs.unavailable}</b> unavailable</div><div class="controls"><button class="secondary" id="shopRemainingBtn">Shop / show remaining</button><button class="ghost" id="showAllGroceriesBtn">Show all</button></div><p class="small">Preference-aware: items matching your saved dislikes are flagged. When PomFit changes your personal meals, it filters dislikes and ranks liked foods first.</p></div>`;
+  if(gs.unavailable){
+    h+=`<div class="card grocery-action"><h3>${gs.unavailable} unavailable item${gs.unavailable===1?'':'s'}</h3><p>${affected.length?`${affected.length} current meal${affected.length===1?' is':'s are'} affected.`:'No current meal in your view appears to depend on them.'}</p>${affected.length?`<ul>${affected.slice(0,8).map(x=>`<li>${esc(x.label)} — ${esc(x.slot)}: ${esc(mealTitle(x.text))} <span class="small">(${esc(x.terms.join(', '))})</span></li>`).join('')}</ul><button class="primary" id="changeAffectedMealsBtn">Change affected meals</button>`:''}<button class="secondary" id="keepMenuShopBtn">Keep menu — I’ll shop for them</button></div>`;
+  }else if(gs.unchecked){
+    h+=`<div class="card"><h3>${gs.unchecked} items still unconfirmed</h3><p class="small">Either check them once you have them, or mark any you cannot obtain as Unavailable. Only unavailable items trigger meal-change suggestions.</p></div>`;
+  }else{
+    h+=`<div class="card"><h3>Groceries confirmed</h3><p class="small">Everything needed on the shared list is marked available/purchased.</p></div>`;
+  }
+  h+='<div class="gcols">';
+  for(const [cat,items] of Object.entries(cats)){
+    h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list grocery-list">${items.map(x=>{const p=groceryPreference(x);return `<li class="${x.unavailable?'grocery-unavailable':''}"><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><div class="grocery-item-text"><label class="${x.checked?'done':''}">${esc(x.text)}</label>${p.dislike?`<div class="small pref-warn">Your profile dislikes: ${esc(p.dislike)}</div>`:p.like?`<div class="small pref-like">Matches a liked food: ${esc(p.like)}</div>`:''}</div><button class="ghost grocery-unavailable-btn" data-g-unavailable="${esc(x.id)}">${x.unavailable?'Available after all':'Unavailable'}</button></li>`}).join('')}</ul></section>`;
+  }
+  h+='</div><div class="card"><button class="ghost" id="resetG">Reset shared grocery checks</button></div>';
+  return h;
 }
 function renderSeason(){return `<div class="card"><h2>Seasoning library</h2><input id="seasonSearch" class="search" placeholder="Search soy, fish, asparagus, smoky…"><div class="season" id="seasonList">${menu().seasonings.map(s=>`<details data-search="${esc((s.name+' '+s.best+' '+s.recipe).toLowerCase())}"><summary>${esc(s.name)} <span class="small">• ${esc(s.sodium)} sodium</span></summary><p><b>Best with:</b> ${esc(s.best)}</p><p><b>Mix:</b> ${esc(s.recipe)}</p></details>`).join('')}</div></div>`;}
 function renderWorkout(){
@@ -979,7 +1071,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v40<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v41<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1035,9 +1127,40 @@ function bindDynamic(){
   $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
   $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
   $$('[data-prep]').forEach(x=>x.onchange=()=>{saveShared({prep_tasks:prep().map(t=>t.id===x.dataset.prep?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
-  $$('[data-g]').forEach(x=>x.onchange=()=>{saveShared({groceries:groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
+  $('[data-g]').forEach(x=>x.onchange=async()=>{await saveShared({groceries:groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked,unavailable:x.checked?false:t.unavailable}:t)});render();});
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
-  if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false}))}).then(render);
+  if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false,unavailable:false}))}).then(render);
+  if($('#weeklyGroceryBtn'))$('#weeklyGroceryBtn').onclick=()=>{ui.tab='grocery';groceryMode='needs';render();};
+  if($('#shopRemainingBtn'))$('#shopRemainingBtn').onclick=()=>{groceryMode='needs';render();};
+  if($('#showAllGroceriesBtn'))$('#showAllGroceriesBtn').onclick=()=>{groceryMode='all';render();};
+  $('[data-g-unavailable]').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.gUnavailable;
+    const updated=groceries().map(x=>x.id===id?{...x,unavailable:!x.unavailable,checked:x.unavailable?x.checked:false}:x);
+    await saveShared({groceries:updated});
+    render();
+  });
+  if($('#keepMenuShopBtn'))$('#keepMenuShopBtn').onclick=()=>{groceryMode='needs';render();};
+  if($('#changeAffectedMealsBtn'))$('#changeAffectedMealsBtn').onclick=async()=>{
+    const affected=affectedMeals();
+    if(!affected.length)return;
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
+    const overrides={...mealOverrides()};
+    affected.forEach(a=>{
+      if(a.slot==='dinner'){
+        updatedMenu.days[a.day]={...updatedMenu.days[a.day],dinner:sharedDinnerReplacement(a.text)};
+      }else{
+        const key=`${a.day}-${myView()}-${a.slot}`;
+        overrides[key]=personalMealReplacement(a.slot,a.text);
+      }
+    });
+    const priorMenu=shared.menu;
+    shared={...shared,menu:updatedMenu};
+    const updatedPrep=generatedPrepTasks();
+    shared={...shared,menu:priorMenu};
+    await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+    if(Object.keys(overrides).length)await savePersonal({settings:{...(personal.settings||{}),meal_overrides:overrides}});
+    render();
+  });
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
   if($('#dietStyle'))$('#dietStyle').value=dietStyle();
   if(ui.tab==='profile'){
@@ -1149,7 +1272,7 @@ function bindDynamic(){
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
   if($('#replayTourBtn'))$('#replayTourBtn').onclick=()=>startTour(true);
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=40';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href=`./refresh.html?v=${APP_VERSION}`;
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -1168,7 +1291,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=40',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`,{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
