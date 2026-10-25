@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=34';
+import { DEFAULT_DATA } from './data.js?v=35';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -10,6 +10,71 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
 let ui={view:'Clark',tab:'today'};
+const TOUR_VERSION=1;
+let tour={active:false,index:0,replay:false};
+function tourSteps(){
+  return [
+    {tab:'today',title:'Welcome to PomFit',body:`Hi, I’m ${pomName()}. I’ll show you the basics. PomFit keeps shared household planning together while your Profile, workouts, notes and preferences stay personal.`},
+    {tab:'profile',title:'1. Build My Profile',body:'Start here. Add age, height and weight; choose a diet; list foods you like or dislike; set fasting and meal times; pick training goals, sports and equipment. If you use Peloton, Tonal, Hydrow, iFIT or another structured program, enter the program and its usual days so PomFit schedules around it.'},
+    {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household so everyone stays synchronized.'},
+    {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” for a personal meal. Dinner changes are labeled for the whole household. PomFit remembers rejected personal meals so it can offer something different.'},
+    {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority so PomFit does not stack conflicting leg strength or HIIT on top of them.'},
+    {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Your Profile, workout completion, measurements and private notes are personal to your signed-in account.'},
+    {tab:'today',title:'6. Ask for a little more food',body:'If you are still hungry, use “I’m still hungry — what can I eat?” PomFit suggests a small add-on that respects your diet, disliked foods and fasting window.'},
+    {tab:'account',title:'7. Reminders and Gizmo',body:`In Account you can rename your Pom, test ${pomName()}’s bark, turn bark reminders on or off, choose the reminder time, update PomFit and replay this tour anytime.`},
+    {tab:'today',title:'You’re ready',body:'Use Today for the daily plan, Profile whenever your goals or equipment change, and Week to look ahead. You can replay this walkthrough from Account whenever you want.'}
+  ];
+}
+function shouldAutoTour(){
+  return Number(personal?.settings?.app_tour_version||0)<TOUR_VERSION;
+}
+function removeTour(){
+  const el=document.getElementById('tourOverlay');
+  if(el)el.remove();
+}
+function renderTourStep(){
+  if(!tour.active)return;
+  const steps=tourSteps(),step=steps[tour.index];
+  if(!step){finishTour();return;}
+  if(step.tab&&ui.tab!==step.tab){ui.tab=step.tab;render();}
+  removeTour();
+  const overlay=document.createElement('div');
+  overlay.id='tourOverlay';
+  overlay.className='tour-overlay';
+  overlay.innerHTML=`<div class="tour-card" role="dialog" aria-modal="true" aria-label="PomFit app tour">
+    <div class="tour-head"><div class="tour-pom">🐾</div><div><div class="tour-kicker">${esc(pomName())}’s tour</div><h2>${esc(step.title)}</h2></div></div>
+    <p class="tour-body">${esc(step.body)}</p>
+    <div class="tour-progress">Step ${tour.index+1} of ${steps.length}</div>
+    <div class="tour-actions">
+      <button class="ghost" id="tourSkipBtn">${tour.replay?'Close tour':'Skip tour'}</button>
+      <div class="tour-spacer"></div>
+      <button class="ghost" id="tourBackBtn" ${tour.index===0?'disabled':''}>Back</button>
+      <button class="primary" id="tourNextBtn">${tour.index===steps.length-1?'Finish':'Next'}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('tourSkipBtn').onclick=()=>finishTour(true);
+  document.getElementById('tourBackBtn').onclick=()=>{if(tour.index>0){tour.index--;renderTourStep();}};
+  document.getElementById('tourNextBtn').onclick=()=>{if(tour.index>=steps.length-1)finishTour(false);else{tour.index++;renderTourStep();}};
+}
+function startTour(replay=false){
+  if(!session||!personal||!shared)return;
+  tour={active:true,index:0,replay};
+  renderTourStep();
+}
+async function finishTour(skipped=false){
+  const wasReplay=tour.replay;
+  tour={active:false,index:0,replay:false};
+  removeTour();
+  if(!wasReplay){
+    try{
+      await savePersonal({settings:{...(personal.settings||{}),app_tour_version:TOUR_VERSION,app_tour_completed_at:new Date().toISOString(),app_tour_skipped:!!skipped}});
+    }catch(e){console.error('Tour completion save failed',e);}
+  }
+}
+function maybeStartTour(){
+  if(shouldAutoTour()&&!tour.active)setTimeout(()=>startTour(false),250);
+}
 
 function show(id){['authShell','setupShell','appShell'].forEach(x=>$('#'+x).classList.toggle('hidden',x!==id));}
 function notice(id,msg,bad=false){const e=$(id);if(!msg){e.classList.add('hidden');return;}e.textContent=msg;e.className='notice'+(bad?' error':'');}
@@ -196,7 +261,7 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=34');
+    const audio=new Audio('./Gizmo-bark.mp3?v=35');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -688,7 +753,7 @@ async function joinHousehold(){
   }
   await load();await enterApp();
 }
-async function enterApp(){show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');}
+async function enterApp(){show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
 async function subscribe(){
   for(const c of channels)await supabase.removeChannel(c);channels=[];
   if(!profile?.household_id)return;
@@ -829,7 +894,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v34<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v35<div class="small">If this is not v35, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -934,7 +999,8 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=34';
+  if($('#replayTourBtn'))$('#replayTourBtn').onclick=()=>startTour(true);
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=35';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -953,7 +1019,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=34',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=35',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
