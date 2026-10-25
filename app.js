@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=29';
+import { DEFAULT_DATA } from './data.js?v=30';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -18,7 +18,21 @@ function myView(){return myName().toLowerCase().includes('elizabeth')?'Elizabeth
 function pomName(){return String(personal?.settings?.pom_name||'Gizmo').trim()||'Gizmo';}
 function syncMsg(t){if($('#syncStatus'))$('#syncStatus').textContent=t;}
 function todayIndex(){const d=new Date().getDay();return d===0?0:Math.min(6,d);}
-function personalProfile(){return personal?.settings?.profile_config||{};}
+function storedVitals(){
+  const m=personal?.measurements;
+  if(m && !Array.isArray(m) && m.profile_vitals && typeof m.profile_vitals==='object')return m.profile_vitals;
+  return {};
+}
+function personalProfile(){
+  const base=personal?.settings?.profile_config||{};
+  const v=storedVitals();
+  return {
+    ...base,
+    age:v.age??base.age??null,
+    height_in:v.height_in??base.height_in??null,
+    weight_lb:v.weight_lb??base.weight_lb??null
+  };
+}
 function profileReady(){return personalProfile().onboarding_complete===true;}
 function dietStyle(){return personalProfile().diet_style||'balanced';}
 function foodList(key){return String(personalProfile()[key]||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);}
@@ -139,7 +153,7 @@ function playBark(){
     const volumes=[.84,.72,.66];
     const delays=[0,185,390];
     const clips=rates.map((rate,idx)=>{
-      const a=new Audio('./pomeranian-bark.mp3?v=29');
+      const a=new Audio('./pomeranian-bark.mp3?v=30');
       a.preload='auto';
       a.volume=volumes[idx];
       a.playbackRate=rate;
@@ -182,6 +196,48 @@ const MEAL_CATALOG={
     dinner:[
       ['Lean protein, two vegetables and a measured whole-food carbohydrate',['protein','vegetables','whole grain']],
       ['Fish, vegetables and olive oil',['fish','vegetables','olive oil']]
+    ]
+  },
+  performance:{
+    breakfast:[
+      ['High-protein shake with milk, banana or berries, and oats if training demands it',['protein','whey','milk','banana','berries','oats']],
+      ['Eggs with whole-grain toast and fruit',['eggs','bread','fruit']],
+      ['Greek yogurt with berries, nuts and a measured whole-grain carbohydrate',['yogurt','berries','nuts','whole grain']]
+    ],
+    lunch:[
+      ['Chicken, vegetables and rice or another whole-food carbohydrate',['chicken','vegetables','rice']],
+      ['Salmon with vegetables and potato or whole grain',['salmon','vegetables','potato','whole grain']],
+      ['Lean beef, beans and vegetables with a measured carbohydrate',['beef','beans','vegetables','whole grain']]
+    ],
+    afternoon:[
+      ['Protein shake plus fruit; add a measured carbohydrate before or after hard training',['protein','whey','fruit','whole grain']],
+      ['Swiss cheese, fruit and pistachios',['swiss','fruit','pistachios']],
+      ['Tuna or chicken with whole-grain crackers and vegetables',['tuna','chicken','crackers','vegetables']]
+    ],
+    dinner:[
+      ['Lean protein, vegetables and a training-appropriate whole-food carbohydrate',['protein','vegetables','whole grain']],
+      ['Fish, vegetables, olive oil and potato/rice as training needs dictate',['fish','vegetables','olive oil','potato','rice']]
+    ]
+  },
+  musclegain:{
+    breakfast:[
+      ['High-protein shake with milk, whey, berries and oats',['protein','whey','milk','berries','oats']],
+      ['Eggs, whole-grain toast, fruit and an extra lean protein serving',['eggs','bread','fruit','protein']],
+      ['Greek yogurt with berries, nuts and added protein',['yogurt','berries','nuts','protein']]
+    ],
+    lunch:[
+      ['6–8 oz chicken with vegetables and rice or potato',['chicken','vegetables','rice','potato']],
+      ['6–8 oz salmon with vegetables and whole grain',['salmon','vegetables','whole grain']],
+      ['Lean beef bowl with beans, vegetables and a measured carbohydrate',['beef','beans','vegetables','whole grain']]
+    ],
+    afternoon:[
+      ['Protein shake with milk plus fruit',['protein','whey','milk','fruit']],
+      ['Swiss cheese plus lean protein and fruit',['swiss','protein','fruit']],
+      ['Tuna/chicken snack with whole-grain crackers',['tuna','chicken','crackers']]
+    ],
+    dinner:[
+      ['Generous lean protein, vegetables and a whole-food carbohydrate',['protein','vegetables','whole grain']],
+      ['Fish or lean meat, vegetables, olive oil and rice/potato',['fish','meat','vegetables','olive oil','rice','potato']]
     ]
   },
   mediterranean:{
@@ -440,6 +496,18 @@ function hungerSuggestions(){
   }
   const diet=dietStyle(),dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
   const sets={
+    performance:[
+      ['3–4 oz lean protein plus fruit',['protein','chicken','fish','fruit']],
+      ['Protein shake with milk plus berries or banana',['protein','whey','milk','berries','banana']],
+      ['Swiss cheese, fruit and a measured handful of pistachios',['swiss','fruit','pistachios']],
+      ['If training soon, add a small whole-food carbohydrate with protein',['whole grain','protein']]
+    ],
+    musclegain:[
+      ['25–35 g protein from a shake or lean food source',['protein','whey','chicken','fish']],
+      ['3–4 oz lean protein plus fruit or a measured whole-food carbohydrate',['protein','fruit','whole grain']],
+      ['Swiss cheese plus a protein shake',['swiss','protein','whey']],
+      ['Tuna or chicken with vegetables and whole-grain crackers',['tuna','chicken','vegetables','crackers']]
+    ],
     keto:[
       ['3–4 oz salmon, tuna, chicken or lean beef with cucumber/asparagus',['salmon','tuna','chicken','beef','cucumber','asparagus']],
       ['Swiss or another cheese with cucumber or tomato',['swiss','cheese','cucumber','tomato']],
@@ -713,7 +781,7 @@ function renderProfile(){
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
   <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label></div>
-  <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select></div>
+  <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
   <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
@@ -723,7 +791,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v29<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v30<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -785,8 +853,13 @@ function bindDynamic(){
     try{
       const next=collectProfileForm();
       status.textContent='Saving…';
-      await savePersonal({settings:{...(personal.settings||{}),profile_config:next}});
-      const saved=personal?.settings?.profile_config||{};
+      const existingMeasurements=(personal?.measurements && !Array.isArray(personal.measurements) && typeof personal.measurements==='object')?personal.measurements:{};
+      const vitalRecord={age:next.age,height_in:next.height_in,weight_lb:next.weight_lb,saved_at:new Date().toISOString()};
+      await savePersonal({
+        settings:{...(personal.settings||{}),profile_config:next},
+        measurements:{...existingMeasurements,profile_vitals:vitalRecord}
+      });
+      const saved=personalProfile();
       const vitalOk=saved.age===next.age&&saved.height_in===next.height_in&&saved.weight_lb===next.weight_lb;
       status.textContent=vitalOk?'Profile saved.':'Profile saved, but please recheck age/height/weight.';
       render();
@@ -819,7 +892,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=29';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=30';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -838,7 +911,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=29',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=30',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
