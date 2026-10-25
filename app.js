@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=42';
+import { DEFAULT_DATA } from './data.js?v=43';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=42;
+const APP_VERSION=43;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -22,7 +22,7 @@ function tourSteps(){
     {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household so everyone stays synchronized.'},
     {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” when you simply want something different today. It does not mark the meal as disliked. Dinner changes are labeled for the whole household.'},
     {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority so PomFit does not stack conflicting leg strength or HIIT on top of them.'},
-    {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Use the Grocery screen to confirm what is available, mark an item Unavailable, then either shop for it or let PomFit change affected meals. Your Profile, workout completion, measurements and private notes are personal.'},
+    {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Use the Grocery screen to confirm what is available, add ingredients you already have and want to use, mark an item Unavailable, then either shop for it or let PomFit change affected meals. Your Profile, workout completion, measurements and private notes are personal.'},
     {tab:'today',title:'6. Ask for a little more food',body:'If you are still hungry, use “I’m still hungry — what can I eat?” PomFit suggests a small add-on that respects your diet, disliked foods and fasting window.'},
     {tab:'account',title:'7. Reminders and Gizmo',body:`In Account you can rename your Pom, test ${pomName()}’s bark, turn bark reminders on or off, choose the reminder time, update PomFit and replay this tour anytime.`},
     {tab:'today',title:'You’re ready',body:'Use Today for the daily plan, Profile whenever your goals or equipment change, and Week to look ahead. You can replay this walkthrough from Account whenever you want.'}
@@ -299,7 +299,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=42');
+    const audio=new Audio('./Gizmo-bark.mp3?v=43');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -882,6 +882,40 @@ function grocerySummary(){
   const total=groceryActive().length,checked=groceryActive().filter(x=>x.checked).length;
   return {total,checked,unchecked:groceryUnchecked().length,unavailable:groceryUnavailable().length};
 }
+function menuSuggestionForOnHand(item){
+  const text=String(item?.text||'').trim();
+  if(!text)return null;
+  const terms=groceryTerms(text);
+  let choices=sharedDinnerAlternatives().filter(x=>{
+    const nx=normFood(x);
+    return terms.some(t=>nx.includes(normFood(t))) || nx.includes(normFood(text));
+  });
+  if(!choices.length)return null;
+  const dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  const clean=choices.filter(x=>!dislikes.some(d=>prefMatchesText(d,x)));
+  if(clean.length)choices=clean;
+  choices.sort((a,b)=>{
+    const sa=likes.reduce((n,l)=>n+(prefMatchesText(l,a)?1:0),0);
+    const sb=likes.reduce((n,l)=>n+(prefMatchesText(l,b)?1:0),0);
+    return sb-sa;
+  });
+  return choices[0]||null;
+}
+function onHandUsedInMenu(item){
+  const text=String(item?.text||'').trim(),terms=groceryTerms(text);
+  return menu().days.some(d=>{
+    const nx=normFood(d.dinner);
+    return nx.includes(normFood(text))||terms.some(t=>nx.includes(normFood(t)));
+  });
+}
+function nextDinnerDayForOnHand(suggestion){
+  const start=todayIndex(),days=menu().days;
+  for(let offset=0;offset<days.length;offset++){
+    const i=(start+offset)%days.length;
+    if(days[i].dinner!==suggestion)return i;
+  }
+  return start;
+}
 function prep(){return generatedPrepTasks();}
 function checks(){return personal?.settings?.meal_checks||{};}
 function workoutShown(view){if(view==='Both')return true;if(view===myView())return profile?.workout_enabled!==false;return true;}
@@ -1033,6 +1067,7 @@ function renderGrocery(){
   const cats={};visible.forEach(x=>(cats[x.category]??=[]).push(x));
   const gs=grocerySummary(),affected=affectedMeals();
   let h=`<div class="card grocery-audit"><h2>Are this week’s groceries available?</h2><p>Check items you already have or have purchased. If an item cannot be obtained, mark it <b>Unavailable</b>. PomFit will not change meals merely because an item is unchecked.</p><div class="small"><b>${gs.checked}</b> confirmed • <b>${gs.unchecked}</b> still to get/confirm • <b>${gs.unavailable}</b> unavailable</div><div class="controls"><button class="secondary" id="shopRemainingBtn">Shop / show remaining</button><button class="ghost" id="showAllGroceriesBtn">Show all</button></div><p class="small">Preference-aware: items matching your saved dislikes are flagged. When PomFit changes your personal meals, it filters dislikes and ranks liked foods first.</p></div>`;
+  h+=`<div class="card on-hand-card"><h3>Already have something you want to use?</h3><p class="small">Add an ingredient that is already in the house but is not on this week's list. PomFit will mark it available and, when possible, offer a meal that uses it.</p><div class="on-hand-entry"><input id="onHandGroceryInput" class="search" placeholder="e.g. cod, asparagus, ground beef"><button class="secondary" id="addOnHandGroceryBtn">Add on hand</button></div><div id="onHandGroceryStatus" class="small"></div></div>`;
   if(gs.unavailable){
     h+=`<div class="card grocery-action"><h3>${gs.unavailable} unavailable item${gs.unavailable===1?'':'s'}</h3><p>${affected.length?`${affected.length} current meal${affected.length===1?' is':'s are'} affected.`:'No current meal in your view appears to depend on them.'}</p>${affected.length?`<ul>${affected.slice(0,8).map(x=>`<li>${esc(x.label)} — ${esc(x.slot)}: ${esc(mealTitle(x.text))} <span class="small">(${esc(x.terms.join(', '))})</span></li>`).join('')}</ul><button class="primary" id="changeAffectedMealsBtn">Change affected meals</button>`:''}<button class="secondary" id="keepMenuShopBtn">Keep menu — I’ll shop for them</button></div>`;
   }else if(gs.unchecked){
@@ -1042,7 +1077,7 @@ function renderGrocery(){
   }
   h+='<div class="gcols">';
   for(const [cat,items] of Object.entries(cats)){
-    h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list grocery-list">${items.map(x=>{const p=groceryPreference(x);return `<li class="${x.unavailable?'grocery-unavailable':''}"><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><div class="grocery-item-text"><label class="${x.checked?'done':''}">${esc(x.text)}</label>${p.dislike?`<div class="small pref-warn">Your profile dislikes: ${esc(p.dislike)}</div>`:p.like?`<div class="small pref-like">Matches a liked food: ${esc(p.like)}</div>`:''}</div><button class="ghost grocery-unavailable-btn" data-g-unavailable="${esc(x.id)}">${x.unavailable?'Available after all':'Unavailable'}</button></li>`}).join('')}</ul></section>`;
+    h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list grocery-list">${items.map(x=>{const p=groceryPreference(x);return `<li class="${x.unavailable?'grocery-unavailable':''}"><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><div class="grocery-item-text"><label class="${x.checked?'done':''}">${esc(x.text)}</label>${p.dislike?`<div class="small pref-warn">Your profile dislikes: ${esc(p.dislike)}</div>`:p.like?`<div class="small pref-like">Matches a liked food: ${esc(p.like)}</div>`:''}</div>${x.use_this_week?'<span class="badge">ON HAND</span>':''}${x.use_this_week&&menuSuggestionForOnHand(x)&&!onHandUsedInMenu(x)?`<button class="secondary grocery-use-btn" data-use-on-hand="${esc(x.id)}">Use in menu</button>`:x.use_this_week&&onHandUsedInMenu(x)?'<span class="small">Used in menu</span>':''}<button class="ghost grocery-unavailable-btn" data-g-unavailable="${esc(x.id)}">${x.unavailable?'Available after all':'Unavailable'}</button></li>`}).join('')}</ul></section>`;
   }
   h+='</div><div class="card"><button class="ghost" id="resetG">Reset shared grocery checks</button></div>';
   return h;
@@ -1071,7 +1106,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v42<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v43<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1133,7 +1168,38 @@ function bindDynamic(){
   if($('#weeklyGroceryBtn'))$('#weeklyGroceryBtn').onclick=()=>{ui.tab='grocery';groceryMode='needs';render();};
   if($('#shopRemainingBtn'))$('#shopRemainingBtn').onclick=()=>{groceryMode='needs';render();};
   if($('#showAllGroceriesBtn'))$('#showAllGroceriesBtn').onclick=()=>{groceryMode='all';render();};
-  $$('[data-g-unavailable]').forEach(btn=>btn.onclick=async()=>{
+  if($('#addOnHandGroceryBtn'))$('#addOnHandGroceryBtn').onclick=async()=>{
+    const input=$('#onHandGroceryInput'),status=$('#onHandGroceryStatus');
+    const text=String(input?.value||'').trim();
+    if(!text){if(status)status.textContent='Enter a grocery or ingredient first.';return;}
+    const existing=groceries().find(x=>normFood(x.text).includes(normFood(text))||normFood(text).includes(normFood(x.text)));
+    let updated;
+    if(existing){
+      updated=groceries().map(x=>x.id===existing.id?{...x,checked:true,unavailable:false,use_this_week:true}:x);
+    }else{
+      const id='onhand-'+Date.now().toString(36);
+      updated=[...groceries(),{id,category:'On hand / use this week',text,checked:true,unavailable:false,use_this_week:true,custom:true,added_at:new Date().toISOString()}];
+    }
+    await saveShared({groceries:updated});
+    if(status)status.textContent='Added as on hand.';
+    render();
+  };
+  $('[data-use-on-hand]').forEach(btn=>btn.onclick=async()=>{
+    const item=groceries().find(x=>x.id===btn.dataset.useOnHand);
+    if(!item)return;
+    const suggestion=menuSuggestionForOnHand(item);
+    if(!suggestion)return;
+    const day=nextDinnerDayForOnHand(suggestion);
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
+    updatedMenu.days[day]={...updatedMenu.days[day],dinner:suggestion};
+    const priorMenu=shared.menu;
+    shared={...shared,menu:updatedMenu};
+    const updatedPrep=generatedPrepTasks();
+    shared={...shared,menu:priorMenu};
+    await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+    render();
+  });
+  $('[data-g-unavailable]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.gUnavailable;
     const updated=groceries().map(x=>x.id===id?{...x,unavailable:!x.unavailable,checked:x.unavailable?x.checked:false}:x);
     await saveShared({groceries:updated});
