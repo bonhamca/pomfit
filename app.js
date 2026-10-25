@@ -56,14 +56,25 @@ function defaultPrep(){return [
   'Clark: morning fasting drinks are black coffee, plain tea, water and zero-cal flavored water. Fruit, milk, whey and OJ wait until after noon.'
 ].map((text,i)=>({id:`prep-${i}`,text,checked:false}));}
 async function seed(){
-  if(!shared||Object.keys(shared.menu||{}).length)return;
-  const patch={menu:DEFAULT_DATA,groceries:defaultGroceries(),prep_tasks:defaultPrep(),updated_at:new Date().toISOString(),updated_by:session.user.id};
-  const r=await supabase.from('household_state').update(patch).eq('household_id',profile.household_id);if(r.error)throw r.error;shared={...shared,...patch};
+  if(!shared)return;
+  const needsMenu=!shared.menu||Object.keys(shared.menu).length===0;
+  const needsGroceries=!Array.isArray(shared.groceries)||shared.groceries.length===0;
+  const needsPrep=!Array.isArray(shared.prep_tasks)||shared.prep_tasks.length===0;
+  if(!needsMenu&&!needsGroceries&&!needsPrep)return;
+  const r=await supabase.rpc('initialize_household_state',{
+    p_menu:DEFAULT_DATA,
+    p_groceries:defaultGroceries(),
+    p_prep_tasks:defaultPrep()
+  });
+  if(r.error)throw r.error;
+  const s=await supabase.from('household_state').select('*').eq('household_id',profile.household_id).single();
+  if(s.error)throw s.error;
+  shared=s.data;
 }
 async function createHousehold(){
   notice('#setupMessage','');const r=await supabase.rpc('create_household',{p_name:'Bonham Household'});
   if(r.error)return notice('#setupMessage',r.error.message,true);
-  await load();await seed();await enterApp();
+  await load();await seed();ui.tab='account';await enterApp();
 }
 async function joinHousehold(){
   notice('#setupMessage','');const code=$('#joinCode').value.trim().toUpperCase();
