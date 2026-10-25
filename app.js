@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=24';
+import { DEFAULT_DATA } from './data.js?v=25';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -135,8 +135,8 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const first=new Audio('./pomeranian-bark.mp3?v=24');
-    const second=new Audio('./pomeranian-bark.mp3?v=24');
+    const first=new Audio('./pomeranian-bark.mp3?v=25');
+    const second=new Audio('./pomeranian-bark.mp3?v=25');
     first.preload='auto';second.preload='auto';
     first.volume=.9;second.volume=.82;
     first.playbackRate=1.38;second.playbackRate=1.48;
@@ -609,7 +609,22 @@ function tip(){
   }
   return `${pomName()} says: ${message}`;
 }
+function sharedDinnerAlternatives(){
+  return [
+    'LEMON-GARLIC SALMON: salmon with asparagus or green beans. Optional whole-grain side for anyone not eating low-carb.',
+    'HARISSA-LEMON CHICKEN: chicken with roasted peppers, zucchini and greens. Optional grain or bread on the side.',
+    'SOY-GINGER BRANZINO: branzino with green beans and mushrooms. Optional rice on the side.',
+    'SMOKY WORCESTERSHIRE LEAN BEEF: lean beef with mushrooms and green beans. Optional potato or whole-grain side.',
+    'LEMON-DILL COD: cod with asparagus and salad. Optional whole-grain side.',
+    'CHILI-LIME SHRIMP: shrimp with zucchini, peppers and greens. Optional rice on the side.'
+  ];
+}
+function nextSharedDinner(current){
+  const choices=sharedDinnerAlternatives();
+  return choices.find(x=>x!==current) || choices[0];
+}
 function textFor(d,k,i=todayIndex()){
+  if(k==='dinner')return d.dinner;
   if(ui.view===myView()&&profileReady()){
     const key=`${i}-${ui.view}-${k}`;
     return chooseMeal(k,i,key);
@@ -626,7 +641,7 @@ function meal(d,i,k,label){
   const id=`${i}-${ui.view}-${k}`,isMine=ui.view===myView();
   const box=isMine?`<input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''} aria-label="Mark ${esc(label)} complete">`:'';
   const meta=isMine&&profileReady()?mealMeta(k):'';
-  const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Not this meal — give me another</button>`:'';
+  const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">${k==='dinner'?'Change dinner for both of us':'Not this meal — give me another'}</button>`:'';
   return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${alt}</div>`;
 }
 function dayCard(d,i){
@@ -677,7 +692,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v24<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v25<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -749,12 +764,21 @@ function bindDynamic(){
       status.textContent='Save failed: '+e.message;
     }
   };
-  $$('[data-alt-meal]').forEach(btn=>btn.onclick=async()=>{
+  $('[data-alt-meal]').forEach(btn=>btn.onclick=async()=>{
     const key=btn.dataset.altMeal,slot=btn.dataset.slot,current=btn.dataset.current;
-    const alternative=nextMealAlternative(slot,current);
-    const rejected=[...new Set([...mealRejections(),current])];
-    const overrides={...mealOverrides(),[key]:alternative};
     try{
+      if(slot==='dinner'){
+        const day=Number(key.split('-')[0]);
+        const next=nextSharedDinner(current);
+        const updatedMenu=JSON.parse(JSON.stringify(menu()));
+        updatedMenu.days[day]={...updatedMenu.days[day],dinner:next};
+        await saveShared({menu:updatedMenu});
+        render();
+        return;
+      }
+      const alternative=nextMealAlternative(slot,current);
+      const rejected=[...new Set([...mealRejections(),current])];
+      const overrides={...mealOverrides(),[key]:alternative};
       await savePersonal({settings:{...(personal.settings||{}),meal_rejections:rejected,meal_overrides:overrides}});
       render();
     }catch(e){syncMsg('Meal swap failed');}
@@ -764,7 +788,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=24';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=25';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
