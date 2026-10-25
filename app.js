@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=31';
+import { DEFAULT_DATA } from './data.js?v=32';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -34,6 +34,16 @@ function personalProfile(){
   };
 }
 function profileReady(){return personalProfile().onboarding_complete===true;}
+function vitalsComplete(){
+  const p=personalProfile();
+  return Number.isFinite(Number(p.age))&&Number(p.age)>0&&Number.isFinite(Number(p.height_in))&&Number(p.height_in)>0&&Number.isFinite(Number(p.weight_lb))&&Number(p.weight_lb)>0;
+}
+function profileSummaryText(){
+  const p=personalProfile();
+  const dietLabels={balanced:'Balanced',performance:'Athletic performance',musclegain:'Muscle gain / high protein',mediterranean:'Mediterranean',lowcarb:'Low carb',keto:'Keto',pescatarian:'Pescatarian',vegetarian:'Vegetarian'};
+  const goals=workoutGoals().map(g=>({sculpt:'Sculpt / tone',strength:'Strength',muscle:'Muscle building',cardio:'Cardio',hiit:'HIIT',mobility:'Mobility',core:'Core',ski:'Skiing',cycling:'Cycling',running:'Running',tennis:'Tennis',boxing:'Boxing',swimming:'Swimming',soccer:'Soccer',basketball:'Basketball'}[g]||g));
+  return {diet:dietLabels[p.diet_style]||'Balanced',goals:goals.join(', ')||'Not selected'};
+}
 function dietStyle(){return personalProfile().diet_style||'balanced';}
 function foodList(key){return String(personalProfile()[key]||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);}
 function mealSchedule(){return personalProfile().meals||{
@@ -149,7 +159,7 @@ function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=31');
+    const audio=new Audio('./Gizmo-bark.mp3?v=32');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -742,9 +752,10 @@ function dayCard(d,i){
   return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${w}<div class="prep"><b>Prep:</b> ${esc(d.prep)}</div></section>`;
 }
 function renderToday(){
-  const n=personal?.notes?.free_text||'';
+  const n=personal?.notes?.free_text||'',summary=profileSummaryText();
+  const profileCard=ui.view===myView()?`<div class="card profile-status"><div class="dayhead"><div><h3>My Profile — ${esc(myName())}</h3><div class="small"><b>Diet:</b> ${esc(summary.diet)}<br><b>Training:</b> ${esc(summary.goals)}</div></div><span class="badge ${vitalsComplete()?'ok-badge':'warn-badge'}">${vitalsComplete()?'SAVED':'VITALS NEEDED'}</span></div><button class="secondary" id="todayProfileBtn">${vitalsComplete()?'Edit my profile':'Finish age, height & weight'}</button></div>`:'';
   const hunger=ui.view===myView()?'<div class="card hunger-card"><h3>Still hungry?</h3><p class="small">Get a small add-on that fits your saved diet, dislikes and fasting window.</p><button class="secondary" id="hungerBtn">I’m still hungry — what can I eat?</button><div id="hungerResult"></div></div>':'';
-  return dayCard(menu().days[todayIndex()],todayIndex())+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
+  return profileCard+dayCard(menu().days[todayIndex()],todayIndex())+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
 }
 function renderWeek(){return `<div class="weekgrid">${menu().days.map(dayCard).join('')}</div>`;}
 function renderPrep(){return `<div class="card"><h2>Shared meal prep</h2><ul class="list">${prep().map(x=>`<li><input type="checkbox" data-prep="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('')}</ul></div>`;}
@@ -775,7 +786,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v31<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App version</b>PomFit v32<div class="small">If this is not v16, update the app.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -818,6 +829,7 @@ function bindDynamic(){
     box.innerHTML=`<div class="hunger-answer"><b>${esc(a.title)}</b><ul>${a.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
   };
   if($('#editProfileBtn'))$('#editProfileBtn').onclick=()=>{ui.tab='profile';render();};
+  if($('#todayProfileBtn'))$('#todayProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=async()=>{
     const food=$('#foodQuery').value.trim(),diet=$('#dietStyle').value;
     const result=foodCompatibility(food,diet),out=$('#foodQueryResult');
@@ -876,7 +888,7 @@ function bindDynamic(){
   if($('#barkReminderToggle'))$('#barkReminderToggle').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_enabled:e.target.checked}});if(e.target.checked)playBark();};
   if($('#barkReminderTime'))$('#barkReminderTime').onchange=async e=>{await savePersonal({settings:{...(personal.settings||{}),bark_reminder_time:e.target.value||'20:00'}});};
   if($('#testBarkBtn'))$('#testBarkBtn').onclick=()=>playBark();
-  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=31';
+  if($('#updateAppBtn'))$('#updateAppBtn').onclick=()=>location.href='./refresh.html?v=32';
   if($('#signOutBtn'))$('#signOutBtn').onclick=signOut;
 }
 
@@ -895,7 +907,7 @@ if($('#accountBtn'))$('#accountBtn').onclick=()=>{ui.tab='account';render();};
 
 supabase.auth.onAuthStateChange((_event,s)=>handleSession(s));
 const {data:{session:initial}}=await supabase.auth.getSession();await handleSession(initial);
-if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=31',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js?v=32',{updateViaCache:'none'}).then(r=>r.update()).catch(console.error);
 setInterval(()=>maybeBarkReminder().catch(console.error),60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')maybeBarkReminder().catch(console.error);});
 setTimeout(()=>maybeBarkReminder().catch(console.error),1500);
