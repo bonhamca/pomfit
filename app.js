@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=44';
+import { DEFAULT_DATA } from './data.js?v=45';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=44;
+const APP_VERSION=45;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -19,9 +19,9 @@ function tourSteps(){
   return [
     {tab:'today',title:'Welcome to PomFit',body:`Hi, I’m ${pomName()}. I’ll show you the basics. PomFit keeps shared household planning together while your Profile, workouts, notes and preferences stay personal.`},
     {tab:'profile',title:'1. Build My Profile',body:'Start here. Add age, height and weight; choose a diet; list foods you like or dislike; set fasting and meal times; pick training goals, sports and equipment. If you use Peloton, Tonal, Hydrow, iFIT or another structured program, enter the program and its usual days so PomFit schedules around it.'},
-    {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household so everyone stays synchronized.'},
+    {tab:'today',title:'2. Use Today as your dashboard',body:'Check off meals and workouts as you finish them. Breakfast, lunch and snacks can be personalized. Dinner is shared with the household. Use Different flavor when you want the same protein and sides with a new seasoning.'},
     {tab:'week',title:'3. Adjust meals when needed',body:'Use “Not this meal — give me another” when you simply want something different today. It does not mark the meal as disliked. Dinner changes are labeled for the whole household.'},
-    {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority so PomFit does not stack conflicting leg strength or HIIT on top of them.'},
+    {tab:'workout',title:'4. Let PomFit coordinate training',body:'Your workout plan uses your goals, sport preparation and equipment. Structured programs and scheduled tests—such as a Peloton FTP test—take priority. For recognized Peloton Power Zone programs, PomFit uses the program name plus start date to calculate the current week/day and protect legs around hard rides and FTP tests.'},
     {tab:'grocery',title:'5. Know what is shared',body:'Grocery checks, meal prep and dinners are household-shared. Use the Grocery screen to confirm what is available, add ingredients you already have and want to use, mark an item Unavailable, then either shop for it or let PomFit change affected meals. Your Profile, workout completion, measurements and private notes are personal.'},
     {tab:'today',title:'6. Ask for a little more food',body:'If you are still hungry, use “I’m still hungry — what can I eat?” PomFit suggests a small add-on that respects your diet, disliked foods and fasting window.'},
     {tab:'account',title:'7. Reminders and Gizmo',body:`In Account you can rename your Pom, test ${pomName()}’s bark, turn bark reminders on or off, choose the reminder time, update PomFit and replay this tour anytime.`},
@@ -134,6 +134,64 @@ const PROGRAM_DEVICES={
   concept2:'Concept2',
   other_program:'Other structured training device/app'
 };
+const PELOTON_PROGRAM_TEMPLATES={
+  discover:{
+    label:'Discover Your Power Zones',weeks:5,
+    aliases:['discover your power zones','introduction to power zones','intro to power zones'],
+    schedule:{
+      1:[{day:1,load:'easy',text:'Intro to Power Zones + beginner ride'},{day:3,load:'test',text:'FTP warm-up + 20-min FTP test'},{day:4,load:'moderate',text:'Power Zone Endurance ride'},{day:5,load:'recovery',text:'Low Impact ride'},{day:6,load:'moderate',text:'Power Zone Endurance ride'}],
+      2:[{day:1,load:'moderate',text:'Power Zone ride'},{day:3,load:'moderate',text:'Power Zone Endurance ride'},{day:4,load:'moderate',text:'Power Zone Endurance ride'},{day:6,load:'moderate',text:'Power Zone Endurance ride'}],
+      3:[{day:1,load:'hard',text:'Power Zone ride'},{day:3,load:'hard',text:'Power Zone ride'},{day:4,load:'moderate',text:'Power Zone Endurance ride'},{day:6,load:'moderate',text:'Power Zone Endurance ride'}],
+      4:[{day:1,load:'hard',text:'Power Zone ride'},{day:3,load:'hard',text:'Power Zone ride'},{day:4,load:'moderate',text:'Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      5:[{day:1,load:'moderate',text:'Power Zone Endurance ride'},{day:2,load:'recovery',text:'Low Impact ride'},{day:3,load:'moderate',text:'Power Zone Endurance ride'},{day:4,load:'moderate',text:'Power Zone Endurance ride'},{day:6,load:'test',text:'FTP warm-up + 20-min FTP test'}]
+    }
+  },
+  build:{
+    label:'Build Your Power Zones',weeks:5,
+    aliases:['build your power zones','build your power zone'],
+    schedule:{
+      1:[{day:1,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:3,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      2:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      3:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      4:[{day:1,load:'max',text:'45-min Power Zone Max ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'60-min Power Zone ride'}],
+      5:[{day:1,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:3,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:6,load:'test',text:'FTP warm-up + 20-min FTP test'}]
+    }
+  },
+  peak:{
+    label:'Peak Your Power Zones',weeks:8,
+    aliases:['peak your power zones','peak your power zone'],
+    schedule:{
+      1:[{day:1,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:3,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      2:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'moderate',text:'45-min Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      3:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      4:[{day:1,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:3,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      5:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'60-min Power Zone Endurance ride'}],
+      6:[{day:1,load:'hard',text:'45-min Power Zone ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'60-min Power Zone ride'}],
+      7:[{day:1,load:'max',text:'45-min Power Zone Max ride'},{day:3,load:'hard',text:'45-min Power Zone ride'},{day:6,load:'long',text:'90-min Power Zone Endurance ride'}],
+      8:[{day:1,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:3,load:'recovery',text:'45-min Power Zone Endurance ride'},{day:6,load:'test',text:'FTP warm-up + 20-min FTP test'}]
+    }
+  },
+  boost:{
+    label:'Boost Your Base: Power Zones',weeks:8,
+    aliases:['boost your base power zones','boost your base: power zones','boost your base'],
+    schedule:Object.fromEntries(Array.from({length:8},(_,idx)=>{
+      const week=idx+1,recovery=week===4||week===8;
+      return [week,[
+        {day:1,load:recovery?'recovery':'moderate',text:'Power Zone Endurance ride'},
+        {day:3,load:recovery?'recovery':'moderate',text:'Power Zone Endurance ride'},
+        {day:6,load:recovery?'moderate':'long',text:recovery?'Long easy Power Zone Endurance ride':'Progressive long Power Zone Endurance ride'}
+      ]];
+    }))
+  }
+};
+function normalizeProgramName(v){return String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+function pelotonTemplateFor(name){
+  const n=normalizeProgramName(name);
+  for(const [key,t] of Object.entries(PELOTON_PROGRAM_TEMPLATES)){
+    if(t.aliases.some(a=>n.includes(normalizeProgramName(a))||normalizeProgramName(a).includes(n)))return {key,...t};
+  }
+  return null;
+}
 function dayTokens(i){
   return [
     ['sun','sunday'],['mon','monday'],['tue','tues','tuesday'],['wed','wednesday'],
@@ -144,9 +202,41 @@ function programRunsOnDay(program,i){
   const text=(String(program?.days||'')+' '+String(program?.key_sessions||'')).toLowerCase();
   return dayTokens(i).some(t=>new RegExp('(^|[^a-z])'+t+'([^a-z]|$)','i').test(text));
 }
-function programWorkoutForDay(i){
+function menuDateForDay(d,i){
+  const m=String(d?.date||'').match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\b/i);
+  if(m){
+    const months={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+    const now=new Date(),month=months[m[1].slice(0,3).toLowerCase()];
+    let year=now.getFullYear();
+    if(month===0&&now.getMonth()===11)year++;
+    if(month===11&&now.getMonth()===0)year--;
+    return new Date(year,month,Number(m[2]),12,0,0,0);
+  }
+  const now=new Date(),start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-todayIndex(),12,0,0,0);
+  start.setDate(start.getDate()+i);
+  return start;
+}
+function knownPelotonSessionForDay(i,d){
+  if(!equipmentList().includes('peloton_bike'))return null;
+  const p=trainingPrograms().peloton_bike||{},template=pelotonTemplateFor(p.name);
+  if(!template||!p.start_date)return null;
+  const start=new Date(p.start_date+'T12:00:00'),date=menuDateForDay(d,i);
+  if(Number.isNaN(start.getTime())||Number.isNaN(date.getTime()))return null;
+  const diff=Math.round((date-start)/86400000);
+  if(diff<0)return null;
+  const week=Math.floor(diff/7)+1,day=(diff%7)+1;
+  if(week<1||week>template.weeks)return null;
+  const session=(template.schedule[week]||[]).find(x=>x.day===day);
+  return session?{...session,week,program:template.label,program_key:template.key}:null;
+}
+function programWorkoutForDay(i,d){
   const programs=trainingPrograms(),entries=[];
+  const known=knownPelotonSessionForDay(i,d);
+  if(known){
+    entries.push(`Peloton Bike: ${known.program} — Week ${known.week}, Day ${known.day}: ${known.text}. This session is locked into the plan before PomFit places other training.`);
+  }
   for(const [key,label] of Object.entries(PROGRAM_DEVICES)){
+    if(key==='peloton_bike'&&known)continue;
     if(!equipmentList().includes(key))continue;
     const p=programs[key]||{};
     if(!p.name||!programRunsOnDay(p,i))continue;
@@ -154,6 +244,22 @@ function programWorkoutForDay(i){
     entries.push(`${label}: ${p.name}. Follow the scheduled program session${notes?' — '+notes:''}. PomFit will avoid adding conflicting hard leg or HIIT work today.`);
   }
   return entries.join(' ');
+}
+function programProtectionForDay(i,d){
+  const days=menu().days;
+  const prev=i>0?knownPelotonSessionForDay(i-1,days[i-1]):null;
+  const next=i<days.length-1?knownPelotonSessionForDay(i+1,days[i+1]):null;
+  const demanding=x=>x&&['hard','max','test','long'].includes(x.load);
+  if(demanding(next))return `Protect legs for tomorrow's Peloton ${next.program} session. Do upper-body strength, core, and mobility only; no hard leg strength or HIIT.`;
+  if(demanding(prev))return `Recovery/upper-body day after yesterday's demanding Peloton session. No heavy leg strength; use upper body, core, mobility, or easy Zone 1–2 recovery.`;
+  return '';
+}
+function pelotonProgramStatus(p){
+  const t=pelotonTemplateFor(p?.name);
+  if(!p?.name)return 'Enter a Peloton program name. Recognized Power Zone programs can sync by start date.';
+  if(!t)return 'Custom/unrecognized program: PomFit will use the days and key sessions you enter manually.';
+  if(!p.start_date)return `Recognized: ${t.label} (${t.weeks} weeks). Add the program start date to synchronize the week-by-week schedule.`;
+  return `Synced preset: ${t.label} • ${t.weeks} weeks • start ${p.start_date}.`;
 }
 function resistancePrescription(mode='strength'){
   const e=equipmentList(),notes=equipmentNotes();
@@ -209,6 +315,7 @@ function collectProfileForm(){
     equipment_notes:$('#equipmentNotes')?.value.trim()||'',
     training_programs:Object.fromEntries(Object.keys(PROGRAM_DEVICES).map(k=>[k,{
       name:$('#programName_'+k)?.value.trim()||'',
+      start_date:$('#programStart_'+k)?.value||'',
       days:$('#programDays_'+k)?.value.trim()||'',
       key_sessions:$('#programSessions_'+k)?.value.trim()||''
     }])),
@@ -299,7 +406,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=44');
+    const audio=new Audio('./Gizmo-bark.mp3?v=45');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -959,6 +1066,37 @@ function textFor(d,k,i=todayIndex()){
   if(k==='afternoon')return `Clark: ${d.clark_afternoon}\nElizabeth: ${d.elizabeth_snack}`;
   return d[k];
 }
+function personalFlavorOverrides(){const x=personal?.settings?.meal_flavors;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function mealFlavorOptions(text){
+  const t=String(text||'').toLowerCase();
+  const proteinTerms=['salmon','trout','sole','branzino','sea bass','tilapia','cod','catfish','shrimp','chicken','beef','steak','sirloin'];
+  const present=proteinTerms.filter(p=>t.includes(p));
+  let opts=(menu().seasonings||[]).filter(s=>{
+    const best=String(s.best||'').toLowerCase();
+    return present.some(p=>best.includes(p));
+  });
+  if(!opts.length){
+    const vegTerms=['asparagus','broccoli','green beans','zucchini','mushrooms'];
+    const veg=vegTerms.filter(v=>t.includes(v));
+    opts=(menu().seasonings||[]).filter(s=>veg.some(v=>String(s.best||'').toLowerCase().includes(v)));
+  }
+  return opts;
+}
+function flavorOverrideFor(d,i,k){
+  if(k==='dinner')return d?.flavor_override||null;
+  return personalFlavorOverrides()[`${i}-${myView()}-${k}`]||null;
+}
+function flavorDisplay(d,i,k,text){
+  const f=flavorOverrideFor(d,i,k);
+  if(!f)return '';
+  return `<div class="flavor-note"><b>Flavor:</b> ${esc(f.name)} <span class="small">— use this instead of the seasoning named in the meal; keep the same protein and sides. Mix: ${esc(f.recipe||'')}</span></div>`;
+}
+function nextFlavorForMeal(text,currentName=''){
+  const opts=mealFlavorOptions(text);
+  if(!opts.length)return null;
+  const idx=opts.findIndex(x=>x.name===currentName);
+  return opts[(idx+1+opts.length)%opts.length]||opts[0];
+}
 function meal(d,i,k,label){
   if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
   const t=textFor(d,k,i);if(!t)return'';
@@ -966,7 +1104,11 @@ function meal(d,i,k,label){
   const box=isMine?`<input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''} aria-label="Mark ${esc(label)} complete">`:'';
   const meta=isMine&&profileReady()?mealMeta(k):'';
   const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">${k==='dinner'?'Change dinner for both of us':'Not this meal — give me another'}</button>`:'';
-  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${alt}</div>`;
+  const flavors=isMine&&profileReady()?mealFlavorOptions(t):[];
+  const flavor=flavorOverrideFor(d,i,k);
+  const flavorBtn=flavors.length?`<button class="ghost flavor-btn" data-flavor-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Different flavor</button>`:'';
+  const resetFlavor=flavor?`<button class="ghost flavor-reset-btn" data-reset-flavor="${esc(id)}" data-slot="${esc(k)}">Original flavor</button>`:'';
+  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div></div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
   const raw=p==='Clark'?d.workout_c:d.workout_e;
@@ -982,8 +1124,10 @@ function plannedWorkoutFor(p,i,d){
   const fixed=scheduledWorkoutOverride(p,i,d);
   if(fixed)return fixed;
   if(p===myView()&&profileReady()){
-    const programmed=programWorkoutForDay(i);
+    const programmed=programWorkoutForDay(i,d);
     if(programmed)return programmed;
+    const protection=programProtectionForDay(i,d);
+    if(protection)return protection;
     return personalWorkoutFor(i);
   }
   return p==='Clark'?d.workout_c:d.workout_e;
@@ -1021,6 +1165,8 @@ function dayPrepText(d,i){
     if(afternoon)parts.push(prepInstructionForMeal(afternoon,'afternoon'));
   }
   parts.push(prepInstructionForMeal(d.dinner,'dinner'));
+  const dinnerFlavor=flavorOverrideFor(d,i,'dinner');
+  if(dinnerFlavor)parts.push(`Flavor mix: ${dinnerFlavor.name} — ${dinnerFlavor.recipe}.`);
   return parts.filter(Boolean).join(' ');
 }
 function generatedPrepTasks(){
@@ -1028,7 +1174,7 @@ function generatedPrepTasks(){
   const checked=Object.fromEntries(old.map(x=>[x.id,!!x.checked]));
   const days=menu().days.map((d,i)=>({
     id:`dinner-prep-${i}`,
-    text:`${d.date}: ${prepInstructionForMeal(d.dinner,'dinner')}`,
+    text:`${d.date}: ${prepInstructionForMeal(d.dinner,'dinner')}${d.flavor_override?' Flavor mix: '+d.flavor_override.name+' — '+d.flavor_override.recipe+'.':''}`,
     checked:checked[`dinner-prep-${i}`]||false
   }));
   const generic=[
@@ -1091,7 +1237,7 @@ function renderProfile(){
   const p=personalProfile(),m=mealSchedule(),goals=workoutGoals(),equipment=equipmentList(),programs=trainingPrograms();
   const goal=(g,label)=>`<label class="toggle"><input type="checkbox" data-goal="${g}" ${goals.includes(g)?'checked':''}> ${label}</label>`;
   const equip=(g,label)=>`<label class="toggle"><input type="checkbox" data-equipment="${g}" ${equipment.includes(g)?'checked':''}> ${label}</label>`;
-  const programRow=(k,label)=>{const x=programs[k]||{};return `<div class="program-row" data-program-row="${k}"><b>${label} program</b><label class="small">Program / training plan <input id="programName_${k}" class="search" value="${esc(x.name||'')}" placeholder="e.g. Introduction to Power Zones"></label><label class="small">Usual program days <input id="programDays_${k}" class="search" value="${esc(x.days||'')}" placeholder="e.g. Mon, Wed, Fri"></label><label class="small">Key sessions / tests <input id="programSessions_${k}" class="search" value="${esc(x.key_sessions||'')}" placeholder="e.g. Mon FTP test; Wed endurance; Fri intervals"></label></div>`;};
+  const programRow=(k,label)=>{const x=programs[k]||{},peloton=k==='peloton_bike';return `<div class="program-row" data-program-row="${k}"><b>${label} program</b><label class="small">Program / training plan <input id="programName_${k}" class="search" ${peloton?'list="pelotonProgramOptions"':''} value="${esc(x.name||'')}" placeholder="${peloton?'e.g. Discover Your Power Zones':'Program name'}"></label><label class="small">Program start date <input id="programStart_${k}" class="search" type="date" value="${esc(x.start_date||'')}"></label>${peloton?`<datalist id="pelotonProgramOptions"><option value="Discover Your Power Zones"><option value="Build Your Power Zones"><option value="Peak Your Power Zones"><option value="Boost Your Base: Power Zones"></datalist><div class="small program-sync-status">${esc(pelotonProgramStatus(x))}</div>`:''}<label class="small">Custom / usual program days <input id="programDays_${k}" class="search" value="${esc(x.days||'')}" placeholder="Used when PomFit does not recognize the program"></label><label class="small">Key sessions / tests or notes <input id="programSessions_${k}" class="search" value="${esc(x.key_sessions||'')}" placeholder="Optional notes or custom schedule details"></label></div>`;};
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
   <div class="metric"><b>Basics</b><label class="small">Age <input id="profAge" class="search" type="number" min="13" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label></div>
@@ -1101,12 +1247,12 @@ function renderProfile(){
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
   <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
   <div class="metric"><b>Resistance equipment available</b><div class="controls">${equip('bowflex','Bowflex / home gym')}${equip('dumbbells','Dumbbells')}${equip('bands','Resistance bands')}${equip('cable','Cable machine')}${equip('barbell','Barbell / rack')}${equip('kettlebell','Kettlebells')}${equip('trx','TRX / suspension trainer')}${equip('bodyweight','Bodyweight only')}</div><label class="small">Device/model or equipment notes <input id="equipmentNotes" class="search" value="${esc(p.equipment_notes||'')}" placeholder="e.g. Bowflex PR3000, adjustable dumbbells to 50 lb"></label></div>
-  <div class="metric"><b>Cardio / smart-training devices</b><p class="small">If a device uses a structured program, tell PomFit which program and days. Those sessions take priority when PomFit schedules strength, HIIT and recovery.</p><div class="controls">${equip('peloton_bike','Peloton Bike')}${equip('peloton_tread','Peloton Tread')}${equip('peloton_row','Peloton Row')}${equip('tonal','Tonal')}${equip('hydrow','Hydrow')}${equip('ifit','NordicTrack / iFIT')}${equip('concept2','Concept2')}${equip('other_program','Other program/device')}</div><div class="programs-wrap">${programRow('peloton_bike','Peloton Bike')}${programRow('peloton_tread','Peloton Tread')}${programRow('peloton_row','Peloton Row')}${programRow('tonal','Tonal')}${programRow('hydrow','Hydrow')}${programRow('ifit','NordicTrack / iFIT')}${programRow('concept2','Concept2')}${programRow('other_program','Other')}</div></div>
+  <div class="metric"><b>Cardio / smart-training devices</b><p class="small">If a device uses a structured program, enter its program name and start date. Recognized Peloton Power Zone programs sync week-by-week automatically; other devices/programs can still use custom days. Program sessions take priority when PomFit schedules strength, HIIT and recovery.</p><div class="controls">${equip('peloton_bike','Peloton Bike')}${equip('peloton_tread','Peloton Tread')}${equip('peloton_row','Peloton Row')}${equip('tonal','Tonal')}${equip('hydrow','Hydrow')}${equip('ifit','NordicTrack / iFIT')}${equip('concept2','Concept2')}${equip('other_program','Other program/device')}</div><div class="programs-wrap">${programRow('peloton_bike','Peloton Bike')}${programRow('peloton_tread','Peloton Tread')}${programRow('peloton_row','Peloton Row')}${programRow('tonal','Tonal')}${programRow('hydrow','Hydrow')}${programRow('ifit','NordicTrack / iFIT')}${programRow('concept2','Concept2')}${programRow('other_program','Other')}</div></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v44<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v45<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1237,7 +1383,8 @@ function bindDynamic(){
   }
   const syncProgramRows=()=>$$('[data-program-row]').forEach(row=>{const cb=$('[data-equipment="'+row.dataset.programRow+'"]');row.classList.toggle('hidden',!cb?.checked);});
   syncProgramRows();
-  $$('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
+  $('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
+  $('[id^="programName_"],[id^="programStart_"]').forEach(el=>el.addEventListener('change',()=>{profileFormDirty=true;}));
   if($('#hungerBtn'))$('#hungerBtn').onclick=()=>{
     const a=hungerSuggestions(),box=$('#hungerResult');
     box.innerHTML=`<div class="hunger-answer"><b>${esc(a.title)}</b><ul>${a.items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
@@ -1276,7 +1423,45 @@ function bindDynamic(){
       status.textContent='Save failed: '+e.message;
     }
   };
-  $$('[data-alt-meal]').forEach(btn=>btn.onclick=async()=>{
+  $('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
+    const day=Number(id.split('-')[0]);
+    const d=menu().days[day],existing=flavorOverrideFor(d,day,slot);
+    const next=nextFlavorForMeal(current,existing?.name||'');
+    if(!next)return;
+    const flavor={name:next.name,recipe:next.recipe,sodium:next.sodium||''};
+    if(slot==='dinner'){
+      const updatedMenu=JSON.parse(JSON.stringify(menu()));
+      updatedMenu.days[day]={...updatedMenu.days[day],flavor_override:flavor};
+      const priorMenu=shared.menu;
+      shared={...shared,menu:updatedMenu};
+      const updatedPrep=generatedPrepTasks();
+      shared={...shared,menu:priorMenu};
+      await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+    }else{
+      const all={...personalFlavorOverrides(),[id]:flavor};
+      await saveSettingAtomic('meal_flavors',all);
+    }
+    render();
+  });
+  $('[data-reset-flavor]').forEach(btn=>btn.onclick=async()=>{
+    const id=btn.dataset.resetFlavor,slot=btn.dataset.slot,day=Number(id.split('-')[0]);
+    if(slot==='dinner'){
+      const updatedMenu=JSON.parse(JSON.stringify(menu()));
+      delete updatedMenu.days[day].flavor_override;
+      const priorMenu=shared.menu;
+      shared={...shared,menu:updatedMenu};
+      const updatedPrep=generatedPrepTasks();
+      shared={...shared,menu:priorMenu};
+      await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+    }else{
+      const all={...personalFlavorOverrides()};
+      delete all[id];
+      await saveSettingAtomic('meal_flavors',all);
+    }
+    render();
+  });
+  $('[data-alt-meal]').forEach(btn=>btn.onclick=async()=>{
     const key=btn.dataset.altMeal,slot=btn.dataset.slot,current=btn.dataset.current;
     try{
       if(slot==='dinner'){
