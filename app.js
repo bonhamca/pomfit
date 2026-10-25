@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js';
+import { DEFAULT_DATA } from './data.js?v=11';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
