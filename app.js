@@ -1962,8 +1962,8 @@ function bindDynamic(){
     }
   };
   $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
-  $('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
-  $('[data-track-checked-meals]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
+  $$('[data-track-checked-meals]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.trackCheckedMeals),d=menu().days[i],status=$('[data-track-meal-status="'+i+'"]');
     try{
       if(status)status.textContent='Tracking checked meals…';
