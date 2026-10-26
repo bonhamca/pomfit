@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=68;
+const APP_VERSION=69;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -2060,7 +2060,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v68<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v69<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2190,11 +2190,33 @@ async function saveShared(patch){
 }
 let noteTimer;
 function bindDynamic(){
-  if($('#content'))$('#content').onclick=e=>{
+  if($('#content'))$('#content').onclick=async e=>{
     const addCheckedFoodBtn=e.target.closest?.('[data-add-checked-food]');
     if(addCheckedFoodBtn){
       e.preventDefault();
       addFoodToLikes(addCheckedFoodBtn.dataset.addCheckedFood||'');
+      return;
+    }
+    const prepYes=e.target.closest?.('[data-leftover-prep-yes]');
+    if(prepYes){
+      e.preventDefault();
+      const day=Number(prepYes.dataset.leftoverPrepYes),status=$('[data-leftover-status="'+day+'"]');
+      try{
+        if(status)status.textContent='Choosing a fresh lunch you can prep…';
+        await setDifferentLunchChoice(day,true);
+        render();
+      }catch(err){if(status)status.textContent='Could not choose a different lunch: '+err.message;}
+      return;
+    }
+    const prepNo=e.target.closest?.('[data-leftover-prep-no]');
+    if(prepNo){
+      e.preventDefault();
+      const day=Number(prepNo.dataset.leftoverPrepNo),status=$('[data-leftover-status="'+day+'"]');
+      try{
+        if(status)status.textContent='Choosing a no-cook lunch…';
+        await setDifferentLunchChoice(day,false);
+        render();
+      }catch(err){if(status)status.textContent='Could not choose a no-cook lunch: '+err.message;}
       return;
     }
     const modeBtn=e.target.closest?.('[data-grocery-mode]');
@@ -2383,24 +2405,6 @@ function bindDynamic(){
     const day=Number(btn.dataset.leftoverNo),status=$('[data-leftover-status="'+day+'"]');
     if(!status)return;
     status.innerHTML=`<div class="leftover-prep-question"><b>Can you do meal prep for tomorrow's lunch?</b><div class="meal-actions"><button class="secondary" data-leftover-prep-yes="${day}">Yes, I can prep</button><button class="ghost" data-leftover-prep-no="${day}">No — give me a no-cook lunch</button></div></div>`;
-  });
-  $$('[data-leftover-prep-yes]').forEach(btn=>btn.onclick=async()=>{
-    const day=Number(btn.dataset.leftoverPrepYes),status=$('[data-leftover-status="'+day+'"]');
-    try{
-      if(status)status.textContent='Choosing a fresh lunch you can prep…';
-      const result=await setDifferentLunchChoice(day,true);
-      if(status&&result)status.textContent=`Tomorrow's lunch: ${result.alternative}`;
-      render();
-    }catch(e){if(status)status.textContent='Could not choose a different lunch: '+e.message;}
-  });
-  $$('[data-leftover-prep-no]').forEach(btn=>btn.onclick=async()=>{
-    const day=Number(btn.dataset.leftoverPrepNo),status=$('[data-leftover-status="'+day+'"]');
-    try{
-      if(status)status.textContent='Choosing a no-cook lunch…';
-      const result=await setDifferentLunchChoice(day,false);
-      if(status&&result)status.textContent=`No-cook lunch for tomorrow: ${result.alternative}`;
-      render();
-    }catch(e){if(status)status.textContent='Could not choose a no-cook lunch: '+e.message;}
   });
   $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
