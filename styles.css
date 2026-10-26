@@ -336,3 +336,6 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
   .tracking-entry{grid-template-columns:1fr 1fr}
 }
 @media(max-width:520px){.tracking-entry{grid-template-columns:1fr}.tracking-entry button,.tracking-jump button{width:100%}}
+
+.leftover-prep-question{margin-top:8px;padding:10px;border-radius:12px;background:var(--soft)}
+.leftover-prep-question .meal-actions{margin-top:8px}
