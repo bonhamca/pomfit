@@ -317,3 +317,7 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .food-check-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .food-check-actions button{width:auto}
 @media(max-width:640px){.food-check-actions{flex-direction:column}.food-check-actions button{width:100%}}
+
+.meal-tracking-card button{width:auto}
+.meal-tracking-card [data-track-meal-status]{margin-top:8px}
+@media(max-width:640px){.meal-tracking-card button{width:100%}}
