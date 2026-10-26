@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=75';
+import { DEFAULT_DATA } from './data.js?v=76';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=75;
+const APP_VERSION=76;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1921,11 +1921,12 @@ function textFor(d,k,i=todayIndex()){
 function personalFlavorOverrides(){const x=personal?.settings?.meal_flavors;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
 function mealFlavorOptions(text){
   const t=String(text||'').toLowerCase();
-  const proteinTerms=['salmon','trout','sole','branzino','sea bass','tilapia','cod','catfish','shrimp','chicken','beef','steak','sirloin'];
-  const present=proteinTerms.filter(p=>t.includes(p));
+  const proteinTerms=['salmon','trout','sole','branzino','sea bass','tilapia','cod','catfish','shrimp','tuna','chicken','beef','steak','sirloin'];
+  const fishTerms=['salmon','trout','sole','branzino','sea bass','tilapia','cod','catfish','shrimp','tuna'];
+  const present=proteinTerms.filter(p=>t.includes(p)),hasFish=present.some(p=>fishTerms.includes(p));
   let opts=(menu().seasonings||[]).filter(s=>{
     const best=String(s.best||'').toLowerCase();
-    return present.some(p=>best.includes(p));
+    return present.some(p=>best.includes(p)) || (hasFish&&best.includes('fish'));
   });
   if(!opts.length){
     const vegTerms=['asparagus','broccoli','green beans','zucchini','mushrooms'];
@@ -1949,6 +1950,28 @@ function nextFlavorForMeal(text,currentName=''){
   const idx=opts.findIndex(x=>x.name===currentName);
   return opts[(idx+1+opts.length)%opts.length]||opts[0];
 }
+function seasoningEditorHtml(day,slot,text){
+  const d=menu().days[day],current=flavorOverrideFor(d,day,slot)?.name||'',opts=mealFlavorOptions(text);
+  const options=['<option value="">Use original seasoning</option>'].concat(opts.map(x=>`<option value="${esc(x.name)}" ${x.name===current?'selected':''}>${esc(x.name)}</option>`)).join('');
+  return `<div class="seasoning-inline-editor"><label class="small">Seasoning<select class="search" data-seasoning-select="${day}" data-seasoning-slot="${slot}">${options}</select></label><div class="meal-actions"><button class="primary" data-save-seasoning="${day}" data-save-seasoning-slot="${slot}">Apply seasoning</button><button class="ghost" data-cancel-seasoning>Cancel</button></div><div class="small">Keeps the same protein and sides; only the seasoning/marinade changes.</div></div>`;
+}
+async function saveSeasoningChoice(day,slot,name){
+  const d=menu().days[day];
+  if(!d)throw new Error('Meal not found.');
+  const selected=(menu().seasonings||[]).find(x=>x.name===name)||null;
+  if(slot==='dinner'){
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
+    if(selected)updatedMenu.days[day]={...updatedMenu.days[day],flavor_override:{name:selected.name,recipe:selected.recipe,sodium:selected.sodium||''}};
+    else delete updatedMenu.days[day].flavor_override;
+    await saveMenuAndSyncArtifacts(updatedMenu);
+    return;
+  }
+  const id=`${day}-${myView()}-${slot}`,all={...personalFlavorOverrides()};
+  if(selected)all[id]={name:selected.name,recipe:selected.recipe,sodium:selected.sodium||''};else delete all[id];
+  await saveSettingAtomic('meal_flavors',all);
+  await syncArtifactsFromCurrentPlan();
+}
+
 function leftoverPlans(){const x=personal?.settings?.leftover_plans;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
 function mealProtein(text){
   const t=String(text||'').toLowerCase();
@@ -1996,13 +2019,13 @@ function meal(d,i,k,label){
   const actualBtn=isMine?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(t)}">${actual?'Edit what I ate':'Edit what I ate'}</button>`:'';
   const flavors=isMine&&profileReady()?mealFlavorOptions(t):[];
   const flavor=flavorOverrideFor(d,i,k);
-  const flavorBtn=flavors.length?`<button class="ghost flavor-btn" data-flavor-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Different flavor</button>`:'';
+  const flavorBtn=flavors.length?`<button class="ghost flavor-btn" data-seasoning-open="${i}" data-seasoning-slot="${esc(k)}" data-seasoning-current="${esc(t)}">Change seasoning</button>`:'';
   const resetFlavor=flavor?`<button class="ghost flavor-reset-btn" data-reset-flavor="${esc(id)}" data-slot="${esc(k)}">Original flavor</button>`:'';
   const whey=mealUsesWhey(t)?`<label class="small whey-choice">Whey flavor <select data-whey-flavor="${esc(id)}" class="search"><option value="">Choose flavor</option>${DEFAULT_WHEY_FLAVORS.map(x=>`<option value="${esc(x)}" ${wheyFlavorForMeal(id)===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`:'';
   const leftover=k==='dinner'?leftoverPlanner(d,i):'';
   const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k),proteinEstimate=estimateMealProtein(t),proteinLogged=loggedMealProtein(i,d,k);
   const calorieLogger='';
-  return `<div class="meal">${box}<b>${label}${actual?' <span class="badge ok-badge">ACTUAL</span>':''}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${actualBtn}${alt}${flavorBtn}${resetFlavor}</div><div data-actual-editor-host="${i}-${k}"></div>${leftover}</div>`;
+  return `<div class="meal">${box}<b>${label}${actual?' <span class="badge ok-badge">ACTUAL</span>':''}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${actualBtn}${alt}${flavorBtn}${resetFlavor}</div><div data-seasoning-editor-host="${i}-${k}"></div><div data-actual-editor-host="${i}-${k}"></div>${leftover}</div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
   const raw=p==='Clark'?d.workout_c:d.workout_e;
@@ -2150,9 +2173,10 @@ function weekDayCard(d,i){
     const actual=own?actualMealEntry(i,d,k):null;
     const noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
     const canChange=own&&profileReady();
-    const buttons=canChange?`<div class="week-edit-actions"><button class="ghost week-change-meal" data-week-edit="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">Edit plan</button>${actual?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(text)}">Edit actual</button>`:''}</div>`:'';
+    const seasoningOptions=canChange?mealFlavorOptions(text):[];
+    const buttons=canChange?`<div class="week-edit-actions"><button class="ghost week-change-meal" data-week-edit="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">Edit plan</button>${seasoningOptions.length?`<button class="ghost" data-seasoning-open="${i}" data-seasoning-slot="${k}" data-seasoning-current="${esc(text)}">Change seasoning</button>`:''}${actual?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(text)}">Edit actual</button>`:''}</div>`:'';
     const shownLabel=(ui.view==='Both'&&k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)?'Breakfast — Elizabeth':label;
-    return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${actual?'<span class="badge ok-badge">ACTUAL</span>':''}${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${buttons}<div class="week-inline-editor" data-week-editor-host="${i}-${k}"></div></div>`;
+    return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${actual?'<span class="badge ok-badge">ACTUAL</span>':''}${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${buttons}<div class="week-inline-editor" data-seasoning-editor-host="${i}-${k}"></div><div class="week-inline-editor" data-week-editor-host="${i}-${k}"></div></div>`;
   };
   return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
 }
@@ -2279,7 +2303,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v75<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v76<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2470,6 +2494,22 @@ function bindDynamic(){
       }catch(err){if(status)status.textContent='Could not choose a no-cook lunch: '+err.message;}
       return;
     }
+    const seasoningOpenBtn=e.target.closest?.('[data-seasoning-open]');
+    if(seasoningOpenBtn){
+      e.preventDefault();
+      const day=Number(seasoningOpenBtn.dataset.seasoningOpen),slot=seasoningOpenBtn.dataset.seasoningSlot||'',text=seasoningOpenBtn.dataset.seasoningCurrent||'',host=$('[data-seasoning-editor-host="'+day+'-'+slot+'"]');
+      if(host)host.innerHTML=seasoningEditorHtml(day,slot,text);
+      return;
+    }
+    const saveSeasoningBtn=e.target.closest?.('[data-save-seasoning]');
+    if(saveSeasoningBtn){
+      e.preventDefault();
+      const day=Number(saveSeasoningBtn.dataset.saveSeasoning),slot=saveSeasoningBtn.dataset.saveSeasoningSlot||'',host=$('[data-seasoning-editor-host="'+day+'-'+slot+'"]'),select=host?.querySelector('[data-seasoning-select]');
+      try{await saveSeasoningChoice(day,slot,select?.value||'');render();}catch(err){if(host)host.insertAdjacentHTML('beforeend','<div class="small save-warn">'+esc(err.message||'Could not save seasoning')+'</div>');}
+      return;
+    }
+    const cancelSeasoningBtn=e.target.closest?.('[data-cancel-seasoning]');
+    if(cancelSeasoningBtn){e.preventDefault();const host=cancelSeasoningBtn.closest('[data-seasoning-editor-host]');if(host)host.innerHTML='';return;}
     const editActualBtn=e.target.closest?.('[data-edit-actual]');
     if(editActualBtn){
       e.preventDefault();
