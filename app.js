@@ -2284,7 +2284,7 @@ function bindDynamic(){
     if(sel.value)all[sel.dataset.wheyFlavor]=sel.value;else delete all[sel.dataset.wheyFlavor];
     await saveSettingAtomic('whey_flavors_by_meal',all);
   });
-  $('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverYes),days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay],status=$('[data-leftover-status="'+day+'"]');
     if(!d||!target)return;
     try{
@@ -2300,7 +2300,7 @@ function bindDynamic(){
       render();
     }catch(e){if(status)status.textContent='Could not update tomorrow’s lunch: '+e.message;}
   });
-  $('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverNo),days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay],status=$('[data-leftover-status="'+day+'"]');
     if(!d||!target)return;
     try{
