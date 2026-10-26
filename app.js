@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=79';
+import { DEFAULT_DATA } from './data.js?v=80';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=79;
+const APP_VERSION=80;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -129,9 +129,7 @@ async function saveActualMeal(i,d,slot,text){
     const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days?.[i]?.dinner||'');
     if(updatedMenu.days?.[i]){
       updatedMenu.days[i]={...updatedMenu.days[i],dinner:clean,dinner_actual_shared:true,dinner_actual_at:new Date().toISOString()};
-      if(updatedMenu.days[i+1]){
-        updatedMenu.days[i+1]={...updatedMenu.days[i+1],lunch:sharedLeftoverLunchText(clean),lunch_synced_from_dinner:true};
-      }
+      // Do not create leftovers automatically. A next-day leftover lunch is only created by an explicit "Use leftovers tomorrow" choice.
       await saveMenuAndSyncArtifacts(updatedMenu);
       d=updatedMenu.days[i];
     }
@@ -1001,7 +999,9 @@ function chooseMeal(slot,dayIndex,key=''){
     }
     const general=key?mealOverrides()[key]:null;
     if(!legacyLeftoverPlanForTarget(dayIndex)&&general&&personalMealAllowed(general))return general;
-    const sharedLunch=menu()?.days?.[dayIndex]?.lunch||'';
+    const d=menu()?.days?.[dayIndex],personLunch=sharedPersonLunch(d,myView());
+    if(personLunch&&personalMealAllowed(personLunch))return personLunch;
+    const sharedLunch=d?.lunch||'';
     if(sharedLunch&&personalMealAllowed(sharedLunch))return sharedLunch;
   }else if(key&&mealOverrides()[key]&&personalMealAllowed(mealOverrides()[key])){
     return mealOverrides()[key];
@@ -1151,21 +1151,27 @@ async function savePlannedMealEdit(day,slot,text){
   if(slot==='dinner'){
     const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days[day]?.dinner||'');
     updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean,dinner_manual:true,dinner_manual_at:new Date().toISOString(),dinner_manual_by:myView()};
-    if(updatedMenu.days[day+1]){
-      updatedMenu.days[day+1]={...updatedMenu.days[day+1],lunch:sharedLeftoverLunchText(clean),lunch_synced_from_dinner:true};
-    }
+    // Dinner edits do not change tomorrow's lunch unless someone explicitly chooses leftovers.
     await saveMenuAndSyncArtifacts(updatedMenu);
     return;
   }
   if(slot==='lunch'){
-    const existing=activeLeftoverLunchOverride(day,myView());
-    if(existing){
-      const noCook=existing.choice==='different-no-cook'||existing.can_prep===false;
-      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(day,myView())]:{...existing,text:clean,choice:noCook?'different-no-cook':'different-prep',can_prep:!noCook,saved_at:new Date().toISOString()}};
-      await saveSettingAtomic('leftover_lunch_overrides',dedicated);
-      await syncArtifactsFromCurrentPlan();
-      return;
+    const person=ui.view==='Clark'||ui.view==='Elizabeth'?ui.view:myView();
+    if(person===myView()){
+      const existing=activeLeftoverLunchOverride(day,myView());
+      if(existing){
+        const noCook=existing.choice==='different-no-cook'||existing.can_prep===false;
+        const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(day,myView())]:{...existing,text:clean,choice:noCook?'different-no-cook':'different-prep',can_prep:!noCook,saved_at:new Date().toISOString()}};
+        await saveSettingAtomic('leftover_lunch_overrides',dedicated);
+        await syncArtifactsFromCurrentPlan();
+        return;
+      }
     }
+    const updatedMenu=JSON.parse(JSON.stringify(menu())),personLunches={...(updatedMenu.days[day]?.person_lunches||{})};
+    personLunches[person]=clean;
+    updatedMenu.days[day]={...updatedMenu.days[day],person_lunches:personLunches};
+    await saveMenuAndSyncArtifacts(updatedMenu);
+    return;
   }
   const key=`${day}-${myView()}-${slot}`,overrides={...mealOverrides(),[key]:clean};
   await saveSettingAtomic('meal_overrides',overrides);
@@ -1917,8 +1923,16 @@ function nextSharedDinner(current){
   const choices=sharedDinnerAlternatives();
   return choices.find(x=>x!==current) || choices[0];
 }
+function sharedPersonLunch(d,person){
+  const x=d?.person_lunches;
+  return x&&typeof x==='object'&&x[person]?String(x[person]):'';
+}
 function defaultPersonMealText(d,k,person=ui.view){
   if(k==='dinner')return d?.dinner||'';
+  if(k==='lunch'){
+    if(person==='Clark'||person==='Elizabeth')return sharedPersonLunch(d,person)||d?.lunch||'';
+    return d?.lunch||'';
+  }
   if(person==='Clark')return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
   if(person==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:d?.[k]||'';
   if(k==='breakfast')return `Clark: ${d?.clark_am||''}\nElizabeth: ${d?.elizabeth_breakfast||''}`;
@@ -2195,9 +2209,9 @@ function rawWeekMealText(d,k){
   if(k==='dinner')return d?.dinner||'';
   if(ui.view==='Clark'){
     if(k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)return '';
-    return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
+    return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:k==='lunch'?(sharedPersonLunch(d,'Clark')||d?.lunch||''):d?.[k]||'';
   }
-  if(ui.view==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:d?.[k]||'';
+  if(ui.view==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:k==='lunch'?(sharedPersonLunch(d,'Elizabeth')||d?.lunch||''):d?.[k]||'';
   if(k==='breakfast'){
     if(myView()==='Clark'&&personalProfile().intermittent_fasting)return `Elizabeth: ${d?.elizabeth_breakfast||''}`;
     if(myView()==='Elizabeth'&&personalProfile().intermittent_fasting)return `Clark: ${d?.clark_am||''}`;
@@ -2225,9 +2239,9 @@ function weekDayCard(d,i){
     if(!text)return '';
     const actual=own?actualMealEntry(i,d,k):null;
     const noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
-    const canChange=own&&profileReady();
+    const canChange=(own&&profileReady())||(k==='lunch'&&(ui.view==='Clark'||ui.view==='Elizabeth'));
     const seasoningOptions=canChange?mealFlavorOptions(text):[];
-    const buttons=canChange?`<div class="week-edit-actions"><button class="ghost week-change-meal" data-week-edit="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">Edit plan</button>${seasoningOptions.length?`<button class="ghost" data-seasoning-open="${i}" data-seasoning-slot="${k}" data-seasoning-current="${esc(text)}">Change seasoning</button>`:''}${actual?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(text)}">Edit actual</button>`:''}</div>`:'';
+    const buttons=canChange?`<div class="week-edit-actions"><button class="ghost week-change-meal" data-week-edit="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">${k==='lunch'&&!own?'Edit ${esc(ui.view)} lunch':'Edit plan'}</button>${own&&seasoningOptions.length?`<button class="ghost" data-seasoning-open="${i}" data-seasoning-slot="${k}" data-seasoning-current="${esc(text)}">Change seasoning</button>`:''}${own&&actual?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(text)}">Edit actual</button>`:''}</div>`:'';
     const shownLabel=(ui.view==='Both'&&k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)?'Breakfast — Elizabeth':label;
     return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${actual?'<span class="badge ok-badge">ACTUAL</span>':''}${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${buttons}<div class="week-inline-editor" data-seasoning-editor-host="${i}-${k}"></div><div class="week-inline-editor" data-week-editor-host="${i}-${k}"></div></div>`;
   };
@@ -2366,7 +2380,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v79<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v80<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
