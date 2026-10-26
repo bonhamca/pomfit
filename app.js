@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=80';
+import { DEFAULT_DATA } from './data.js?v=81';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=80;
+const APP_VERSION=81;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -108,11 +108,15 @@ function vitalsComplete(){
 }
 function energyLog(){const x=personal?.settings?.energy_log;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
 function actualMeals(){const x=personal?.settings?.actual_meals;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function sharedActualDinner(i,d){
+  const key=isoDateForDay(i,d),x=menu()?.actual_dinners?.[key];
+  return x&&typeof x==='object'&&x.text?x:null;
+}
 function actualMealEntry(i,d,slot){
   const x=actualMeals()?.[isoDateForDay(i,d)]?.[slot];
-  if(slot==='dinner'&&d?.dinner_actual_shared===true&&x?.source!=='manual'){
-    const text=plannedMealTextWithFlavor(d,i,slot,d?.dinner||'');
-    return text?{text,source:'shared_dinner',saved_at:d?.dinner_actual_at||null}:null;
+  if(slot==='dinner'&&x?.source!=='manual'){
+    const sharedDinner=sharedActualDinner(i,d);
+    if(sharedDinner)return {text:sharedDinner.text,source:'shared_dinner',saved_at:sharedDinner.saved_at||null};
   }
   return x&&typeof x==='object'&&x.text?x:null;
 }
@@ -126,10 +130,12 @@ async function saveActualMeal(i,d,slot,text){
   await saveSettingAtomic('actual_meals',all);
 
   if(slot==='dinner'&&d){
-    const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days?.[i]?.dinner||'');
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
     if(updatedMenu.days?.[i]){
-      updatedMenu.days[i]={...updatedMenu.days[i],dinner:clean,dinner_actual_shared:true,dinner_actual_at:new Date().toISOString()};
-      // Do not create leftovers automatically. A next-day leftover lunch is only created by an explicit "Use leftovers tomorrow" choice.
+      updatedMenu.days[i]={...updatedMenu.days[i],dinner:clean};
+      const actualDinners={...(updatedMenu.actual_dinners||{})};
+      actualDinners[dateKey]={text:clean,saved_at:new Date().toISOString(),saved_by:myView()};
+      updatedMenu.actual_dinners=actualDinners;
       await saveMenuAndSyncArtifacts(updatedMenu);
       d=updatedMenu.days[i];
     }
@@ -1123,7 +1129,8 @@ async function setDifferentLunchChoice(day,canPrep){
   await saveSettingAtomic('leftover_plans',plans);
   await saveSettingAtomic('meal_overrides',general);
   await saveSettingAtomic('leftover_lunch_overrides',dedicated);
-  await syncArtifactsFromCurrentPlan();
+  await saveMenuAndSyncArtifacts(menuWithPersonLunch(nextDay,myView(),alternative,canPrep?'different-prep':'different-no-cook'));
+  await syncCheckedSnapshotAfterPlanChange(nextDay,'lunch',alternative);
   return {alternative,target};
 }
 
@@ -1132,6 +1139,8 @@ function nextMealAlternative(slot,current){
   return candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())||current;
 }
 const WEEK_PROTEIN_SWAPS=['salmon','cod','chicken','beef','shrimp','branzino','tuna'];
+function proteinIngredientKey(p){return ({salmon:'salmon',cod:'cod',chicken:'chicken',beef:'beef',shrimp:'shrimp',branzino:'branzino',tuna:'tuna'})[p]||p;}
+function proteinSwapAvailable(p){const key=proteinIngredientKey(p);return !groceryUnavailable().some(x=>(x.ingredient_key||inventoryIngredientKey(x.text))===key);}
 function replaceMealProtein(text,newProtein){
   const source=String(text||''),p=String(newProtein||'').trim().toLowerCase();
   if(!p)return source;
@@ -1149,10 +1158,12 @@ async function savePlannedMealEdit(day,slot,text){
   const clean=String(text||'').trim(),days=menu().days,d=days[day];
   if(!d||!clean)throw new Error('Enter a meal.');
   if(slot==='dinner'){
-    const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days[day]?.dinner||'');
+    const unavailable=mealUnavailableTerms(clean);
+    if(unavailable.length)throw new Error('This dinner uses an ingredient marked unavailable: '+unavailable.join(', ')+'. Choose another dinner or mark the ingredient available first.');
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
     updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean,dinner_manual:true,dinner_manual_at:new Date().toISOString(),dinner_manual_by:myView()};
-    // Dinner edits do not change tomorrow's lunch unless someone explicitly chooses leftovers.
     await saveMenuAndSyncArtifacts(updatedMenu);
+    await syncCheckedSnapshotAfterPlanChange(day,'dinner',clean);
     return;
   }
   if(slot==='lunch'){
@@ -1171,11 +1182,13 @@ async function savePlannedMealEdit(day,slot,text){
     personLunches[person]=clean;
     updatedMenu.days[day]={...updatedMenu.days[day],person_lunches:personLunches};
     await saveMenuAndSyncArtifacts(updatedMenu);
+    if(person===myView())await syncCheckedSnapshotAfterPlanChange(day,'lunch',clean);
     return;
   }
   const key=`${day}-${myView()}-${slot}`,overrides={...mealOverrides(),[key]:clean};
   await saveSettingAtomic('meal_overrides',overrides);
   await syncArtifactsFromCurrentPlan();
+  await syncCheckedSnapshotAfterPlanChange(day,slot,clean);
 }
 async function migrateNoCookInventoryV71(){
   if(personal?.settings?.no_cook_inventory_v71===true)return;
@@ -1487,7 +1500,31 @@ async function joinHousehold(){
   }
   await load();await enterApp();
 }
-async function enterApp(){await migrateNoCookInventoryV71();await migrateCheckedMealsToActualV75();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
+async function migrateSharedLunchPlanV81(){
+  if(personal?.settings?.shared_lunch_v81===true)return;
+  const overrides={...mealOverrides()},updated=JSON.parse(JSON.stringify(menu()));
+  let menuChanged=false,overrideChanged=false;
+  for(const [key,value] of Object.entries(overrides)){
+    const parts=key.split('-'),day=Number(parts[0]),person=parts[1],slot=parts[2];
+    if(slot!=='lunch'||person!==myView()||!updated.days?.[day]||!value)continue;
+    const lunches={...(updated.days[day].person_lunches||{})},modes={...(updated.days[day].person_lunch_modes||{})};
+    lunches[person]=value;modes[person]='custom';
+    updated.days[day]={...updated.days[day],person_lunches:lunches,person_lunch_modes:modes};
+    delete overrides[key];menuChanged=true;overrideChanged=true;
+  }
+  for(let day=0;day<(updated.days?.length||0);day++){
+    const x=activeLeftoverLunchOverride(day,myView());
+    if(!x?.text)continue;
+    const lunches={...(updated.days[day].person_lunches||{})},modes={...(updated.days[day].person_lunch_modes||{})};
+    lunches[myView()]=x.text;modes[myView()]=x.choice||'custom';
+    updated.days[day]={...updated.days[day],person_lunches:lunches,person_lunch_modes:modes};
+    menuChanged=true;
+  }
+  if(overrideChanged)await saveSettingAtomic('meal_overrides',overrides);
+  if(menuChanged)await saveMenuAndSyncArtifacts(updated);
+  await saveSettingAtomic('shared_lunch_v81',true);
+}
+async function enterApp(){await migrateNoCookInventoryV71();await migrateCheckedMealsToActualV75();await migrateSharedLunchPlanV81();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
 async function subscribe(){
   for(const c of channels)await supabase.removeChannel(c);channels=[];
   if(!profile?.household_id)return;
@@ -1657,7 +1694,9 @@ function mealFitsProfile(text){
   return !foodList('food_dislikes').some(d=>prefMatchesText(d,text));
 }
 function rankedDinnerChoices(){
-  let choices=[...sharedDinnerAlternatives(),...VEGETARIAN_SHARED_DINNERS].filter(x=>dietAllowsMealText(x));
+  let choices=[...sharedDinnerAlternatives(),...VEGETARIAN_SHARED_DINNERS]
+    .filter(x=>dietAllowsMealText(x))
+    .filter(x=>mealUnavailableTerms(x).length===0);
   const dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
   const clean=choices.filter(x=>!dislikes.some(d=>prefMatchesText(d,x)));
   if(clean.length)choices=clean;
@@ -1787,14 +1826,27 @@ async function syncArtifactsFromCurrentPlan(statusEl=null){
 }
 async function saveMenuAndSyncArtifacts(updatedMenu,statusEl=null){
   if(statusEl){statusEl.textContent='Syncing changed meal with prep and groceries…';statusEl.className='small';}
+  let latestMenu=shared?.menu||{};
+  try{
+    const fresh=await supabase.from('household_state').select('menu').eq('household_id',profile.household_id).single();
+    if(!fresh.error&&fresh.data?.menu)latestMenu=fresh.data.menu;
+  }catch(e){console.warn('Fresh household merge fallback',e);}
+  const merged=JSON.parse(JSON.stringify(updatedMenu||{}));
+  merged.actual_dinners={...(latestMenu?.actual_dinners||{}),...(merged.actual_dinners||{})};
+  if(Array.isArray(merged.days)&&Array.isArray(latestMenu?.days)){
+    merged.days=merged.days.map((d,i)=>{
+      const latest=latestMenu.days.find(x=>x?.date===d?.date)||latestMenu.days[i]||{};
+      return {...d,person_lunches:{...(latest.person_lunches||{}),...(d.person_lunches||{})},person_lunch_modes:{...(latest.person_lunch_modes||{}),...(d.person_lunch_modes||{})}};
+    });
+  }
   const priorMenu=shared?.menu;
-  shared={...shared,menu:updatedMenu};
+  shared={...shared,menu:merged};
   const updatedPrep=synchronizedPrepTasks();
-  const updatedGroceries=generateSyncedGroceries(updatedMenu);
+  const updatedGroceries=generateSyncedGroceries(merged);
   shared={...shared,menu:priorMenu};
-  await saveShared({menu:updatedMenu,prep_tasks:updatedPrep,groceries:updatedGroceries});
+  await saveShared({menu:merged,prep_tasks:updatedPrep,groceries:updatedGroceries});
   if(statusEl){statusEl.textContent=`Meal synced: ${updatedPrep.length} prep tasks • ${updatedGroceries.length} grocery items.`;statusEl.className='small save-ok';}
-  return {menu:updatedMenu,prep:updatedPrep,groceries:updatedGroceries};
+  return {menu:merged,prep:updatedPrep,groceries:updatedGroceries};
 }
 async function resolveUnavailableMealsAndSync(statusEl=null){
   let affected=[];
@@ -1920,13 +1972,40 @@ function sharedDinnerAlternatives(){
   ];
 }
 function nextSharedDinner(current){
-  const choices=sharedDinnerAlternatives();
-  return choices.find(x=>x!==current) || choices[0];
+  const choices=sharedDinnerAlternatives().filter(x=>mealUnavailableTerms(x).length===0);
+  return choices.find(x=>x!==current) || choices[0] || current;
 }
 function sharedPersonLunch(d,person){
   const x=d?.person_lunches;
   return x&&typeof x==='object'&&x[person]?String(x[person]):'';
 }
+function menuWithPersonLunch(dayIndex,person,text,mode='custom'){
+  const updated=JSON.parse(JSON.stringify(menu())),day=updated.days?.[dayIndex];
+  if(!day)return updated;
+  const lunches={...(day.person_lunches||{})},modes={...(day.person_lunch_modes||{})};
+  lunches[person]=String(text||'').trim();
+  modes[person]=mode;
+  updated.days[dayIndex]={...day,person_lunches:lunches,person_lunch_modes:modes};
+  return updated;
+}
+async function syncCheckedSnapshotAfterPlanChange(day,slot,text){
+  if(ui.view!==myView())return;
+  const d=menu().days?.[day],id=`${day}-${myView()}-${slot}`;
+  if(!d||checks()[id]!==true)return;
+  const existing=actualMeals()?.[isoDateForDay(day,d)]?.[slot];
+  if(existing?.source==='manual')return;
+  const clean=String(text||'').trim();if(!clean)return;
+  const dateKey=isoDateForDay(day,d),actualAll={...actualMeals()},actualDay={...(actualAll[dateKey]||{})};
+  actualDay[slot]={text:clean,source:'checked_snapshot',saved_at:new Date().toISOString()};
+  actualAll[dateKey]=actualDay;
+  await saveSettingAtomic('actual_meals',actualAll);
+  const log={...energyLog()},energy={...(log[dateKey]||{})},meals={...(energy.meals||{})},proteinMeals={...(energy.protein_meals||{})},auto={...(energy.auto_tracked_meals||{})};
+  const cal=estimateMealCalories(clean),protein=estimateMealProtein(clean);
+  meals[slot]=cal;proteinMeals[slot]=protein;auto[slot]={calories:cal,protein_g:protein,meal_text:clean,synced_at:new Date().toISOString(),actual:true};
+  log[dateKey]={...energy,meals,protein_meals:proteinMeals,auto_tracked_meals:auto,last_meal_sync_at:new Date().toISOString()};
+  await saveSettingAtomic('energy_log',log);
+}
+
 function defaultPersonMealText(d,k,person=ui.view){
   if(k==='dinner')return d?.dinner||'';
   if(k==='lunch'){
@@ -2190,7 +2269,7 @@ function dayCard(d,i){
     }
   }
   const drink=ui.view===myView()?renderDrinkPlanner(i):'';
-  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${drink}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i,ui.view==='Both'?myView():ui.view))}</div></section>`;
+  return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon',ui.view==='Elizabeth'?'Afternoon snack':'Afternoon')}${meal(d,i,'dinner','Dinner')}${drink}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i,ui.view==='Both'?myView():ui.view))}</div></section>`;
 }
 function renderToday(){
   const n=personal?.notes?.free_text||'',idx=todayIndex(),day=(Array.isArray(menu()?.days)?menu().days[idx]:null)||DEFAULT_DATA.days[idx];
@@ -2245,10 +2324,10 @@ function weekDayCard(d,i){
     const shownLabel=(ui.view==='Both'&&k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)?'Breakfast — Elizabeth':label;
     return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${actual?'<span class="badge ok-badge">ACTUAL</span>':''}${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${buttons}<div class="week-inline-editor" data-seasoning-editor-host="${i}-${k}"></div><div class="week-inline-editor" data-week-editor-host="${i}-${k}"></div></div>`;
   };
-  return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
+  return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row(ui.view==='Elizabeth'?'Afternoon snack':'Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
 }
 function renderTrackingMealLog(i,d){
-  const labels={breakfast:'Breakfast',lunch:'Lunch',afternoon:'Afternoon',dinner:'Dinner'};
+  const labels={breakfast:'Breakfast',lunch:'Lunch',afternoon:'Afternoon snack',dinner:'Dinner'};
   const rows=['breakfast','lunch','afternoon','dinner'].filter(slot=>isMealEnabled(slot)).map(slot=>{
     const text=trackingMealText(d,slot,i),estimate=estimateMealCalories(text),proteinEstimate=estimateMealProtein(text);
     const logged=loggedMealCalories(i,d,slot),proteinLogged=loggedMealProtein(i,d,slot),eaten=checks()[`${i}-${myView()}-${slot}`]===true;
@@ -2380,7 +2459,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v80<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v81<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2615,7 +2694,7 @@ function bindDynamic(){
       e.preventDefault();
       const day=Number(weekEditBtn.dataset.weekEdit),slot=weekEditBtn.dataset.weekSlot||'',current=weekEditBtn.dataset.weekCurrent||'',host=$('[data-week-editor-host="'+day+'-'+slot+'"]');
       if(!host)return;
-      const quick=slot==='dinner'?`<div class="week-protein-swaps">${WEEK_PROTEIN_SWAPS.map(p=>`<button class="ghost" data-week-protein="${esc(p)}" data-week-protein-day="${day}" data-week-protein-slot="${slot}">${esc(p[0].toUpperCase()+p.slice(1))}</button>`).join('')}</div>`:'';
+      const quick=slot==='dinner'?`<div class="week-protein-swaps">${WEEK_PROTEIN_SWAPS.filter(proteinSwapAvailable).map(p=>`<button class="ghost" data-week-protein="${esc(p)}" data-week-protein-day="${day}" data-week-protein-slot="${slot}">${esc(p[0].toUpperCase()+p.slice(1))}</button>`).join('')}</div>`:'';
       host.innerHTML=`<div class="meal-inline-editor"><label class="small">Planned meal<input class="search" data-week-meal-input value="${esc(current)}"></label>${quick}<div class="meal-actions"><button class="primary" data-save-week-meal="${day}" data-save-week-slot="${slot}">Save planned meal</button><button class="ghost" data-cancel-week-edit>Cancel</button></div><div class="small">${slot==='dinner'?'Quick protein buttons replace the protein in this planned dinner and then sync Prep + Groceries.':'Edit the meal directly, then save.'}</div></div>`;
       return;
     }
@@ -2827,7 +2906,8 @@ function bindDynamic(){
       await saveSettingAtomic('leftover_plans',plans);
       await saveSettingAtomic('meal_overrides',general);
       await saveSettingAtomic('leftover_lunch_overrides',dedicated);
-      await syncArtifactsFromCurrentPlan();
+      await saveMenuAndSyncArtifacts(menuWithPersonLunch(nextDay,myView(),lunchText,'leftovers'));
+      await syncCheckedSnapshotAfterPlanChange(nextDay,'lunch',lunchText);
       render();
     }catch(e){if(status)status.textContent='Could not update tomorrow’s lunch: '+e.message;}
   });
@@ -2881,9 +2961,8 @@ function bindDynamic(){
         return;
       }
       const alternative=nextMealAlternative(slot,current);
-      const overrides={...mealOverrides(),[key]:alternative};
-      await saveSettingAtomic('meal_overrides',overrides);
-      await syncArtifactsFromCurrentPlan();
+      const day=Number(key.split('-')[0]);
+      await savePlannedMealEdit(day,slot,alternative);
       render();
     }catch(e){syncMsg('Meal swap failed');}
   });
