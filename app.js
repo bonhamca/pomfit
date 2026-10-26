@@ -2388,12 +2388,12 @@ function bindDynamic(){
       render();
     }catch(e){if(status)status.textContent='Could not update tomorrow’s lunch: '+e.message;}
   });
-  $('[data-leftover-no]').forEach(btn=>btn.onclick=()=>{
+  $$('[data-leftover-no]').forEach(btn=>btn.onclick=()=>{
     const day=Number(btn.dataset.leftoverNo),status=$('[data-leftover-status="'+day+'"]');
     if(!status)return;
     status.innerHTML=`<div class="leftover-prep-question"><b>Can you do meal prep for tomorrow's lunch?</b><div class="meal-actions"><button class="secondary" data-leftover-prep-yes="${day}">Yes, I can prep</button><button class="ghost" data-leftover-prep-no="${day}">No — give me a no-cook lunch</button></div></div>`;
   });
-  $('[data-leftover-prep-yes]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-prep-yes]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverPrepYes),status=$('[data-leftover-status="'+day+'"]');
     try{
       if(status)status.textContent='Choosing a fresh lunch you can prep…';
@@ -2402,7 +2402,7 @@ function bindDynamic(){
       render();
     }catch(e){if(status)status.textContent='Could not choose a different lunch: '+e.message;}
   });
-  $('[data-leftover-prep-no]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-prep-no]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverPrepNo),status=$('[data-leftover-status="'+day+'"]');
     try{
       if(status)status.textContent='Choosing a no-cook lunch…';
