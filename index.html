@@ -10,7 +10,7 @@
   <title>PomFit</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="./styles.css?v=82" />
+  <link rel="stylesheet" href="./styles.css?v=83" />
 </head>
 <body>
   <div id="authShell" class="auth-shell">
@@ -26,7 +26,7 @@
       </div>
       <div id="signupPanel" class="hidden">
         <h2>Create account</h2>
-        <label>Name<input id="signupName" type="text" placeholder="Clark or Elizabeth" autocomplete="name" /></label>
+        <label>Name<input id="signupName" type="text" placeholder="Your name" autocomplete="name" /></label>
         <label>Email<input id="signupEmail" type="email" autocomplete="email" /></label>
         <label>Password<input id="signupPassword" type="password" minlength="8" autocomplete="new-password" /></label>
         <button id="signUpBtn" class="primary">Create account</button>
@@ -38,7 +38,8 @@
     <div class="auth-card">
       <div class="brand-row"><div class="pom-mini">🐾</div><div><h1>Set up household</h1><p>One dinner plan and grocery list; personal workouts remain separate.</p></div></div>
       <div id="setupMessage" class="notice hidden"></div>
-      <button id="createHouseholdBtn" class="primary">Create Bonham household</button>
+      <label>Household name<input id="householdNameInput" type="text" maxlength="60" placeholder="e.g. Smith Household" /></label>
+       <button id="createHouseholdBtn" class="primary">Create my household</button>
       <div class="divider">or</div>
       <label>Join code<input id="joinCode" type="text" maxlength="8" autocapitalize="characters" placeholder="8-character code" /></label>
       <button id="joinHouseholdBtn" class="secondary">Join household</button>
@@ -54,13 +55,13 @@
     <div id="syncStatus" class="sync-status">Connecting…</div>
     <div id="speech" class="speech"></div>
     <div class="controls">
-      <div class="seg" id="profileSeg"><button data-p="Clark" class="active">Clark</button><button data-p="Elizabeth">Elizabeth</button><button data-p="Both">Both</button></div>
+      <div class="seg" id="profileSeg"><button data-p="Clark" class="active">Me</button><button data-p="Elizabeth" class="hidden">Member 2</button><button data-p="Both" class="hidden">Both</button></div>
       <label class="toggle"><input type="checkbox" id="workoutToggle" checked /> Show workouts</label>
     </div>
     <nav id="nav"><button data-tab="today" class="active">Today</button><button data-tab="tracking">Tracking</button><button data-tab="week">Week</button><button data-tab="prep">Prep</button><button data-tab="grocery">Grocery</button><button data-tab="season">Seasonings</button><button data-tab="workout">Workout</button><button data-tab="profile">Profile</button><button data-tab="account">Account</button></nav>
     <main id="content"></main>
     <div class="footer">Shared dinners, grocery lists and prep sync through your PomFit household. Breakfast, lunch, snacks, profiles and workouts can be personal.</div>
   </div>
-  <script type="module" src="./app.js?v=82"></script>
+  <script type="module" src="./app.js?v=83"></script>
 </body>
 </html>

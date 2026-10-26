@@ -370,3 +370,11 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .prep-meal-name{font-weight:600}
 .prep-meal-instruction{margin-top:5px;line-height:1.45}
 @media(max-width:640px){.prep-meal-row.detailed{grid-template-columns:1fr}}
+
+.household-members{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.member-chip{display:inline-flex;padding:6px 9px;border-radius:999px;background:var(--soft);font-size:.84rem}
+.bug-report-form{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.bug-report-form .note{min-height:110px}
+.bug-report-form .note.compact{min-height:80px}
+.actual-macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+@media(max-width:560px){.actual-macro-grid{grid-template-columns:1fr}}
