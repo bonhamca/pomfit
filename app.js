@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=67;
+const APP_VERSION=68;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1955,13 +1955,14 @@ function renderTrackingMealLog(i,d){
   const rows=['breakfast','lunch','afternoon','dinner'].filter(slot=>isMealEnabled(slot)).map(slot=>{
     const text=trackingMealText(d,slot,i),estimate=estimateMealCalories(text),proteinEstimate=estimateMealProtein(text);
     const logged=loggedMealCalories(i,d,slot),proteinLogged=loggedMealProtein(i,d,slot),eaten=checks()[`${i}-${myView()}-${slot}`]===true;
-    return `<div class="tracking-meal-row"><div><b>${labels[slot]}</b><div class="small">${eaten?'✓ Marked eaten':'Not marked eaten'}</div><div>${esc(text)}</div></div><div class="tracking-entry"><label class="small">Calories<input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${slot}" value="${logged??''}" placeholder="~${estimate}"></label><button class="ghost" data-use-meal-calories="${i}" data-meal-slot="${slot}" data-estimate="${estimate}">Use ~${estimate}</button><label class="small">Protein (g)<input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${slot}" value="${proteinLogged??''}" placeholder="~${proteinEstimate}"></label><button class="ghost" data-use-meal-protein="${i}" data-meal-slot="${slot}" data-estimate="${proteinEstimate}">Use ~${proteinEstimate} g</button></div></div>`;
+    const source=autoTrackedMealsForDay(i,d)[slot]?'Synced from checked meal':'Manual / not yet synced';
+    return `<div class="tracking-meal-row"><div><b>${labels[slot]}</b><div class="small">${eaten?'✓ Marked eaten':'Not marked eaten'} • ${esc(source)}</div><div>${esc(text)}</div><div class="small">PomFit estimate: ~${estimate} kcal • ~${proteinEstimate} g protein</div></div><div class="tracking-entry simplified"><label class="small">Calories<input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${slot}" value="${logged??''}" placeholder="${estimate}"></label><label class="small">Protein (g)<input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${slot}" value="${proteinLogged??''}" placeholder="${proteinEstimate}"></label><div class="small tracking-edit-note">Edit only if the estimate is wrong; changes save when you leave the field.</div></div></div>`;
   }).join('');
-  return `<div class="card"><h3>Meal details</h3><p class="small">Manual values override PomFit estimates.</p><div class="tracking-meals">${rows}</div></div>`;
+  return `<div class="card"><h3>Meal details</h3><p class="small">Use <b>Track calories & sync</b> above to fill estimates for the meals you marked eaten. The fields below are only for correcting those values.</p><div class="tracking-meals">${rows}</div></div>`;
 }
 function renderTracking(){
   const i=todayIndex(),d=(Array.isArray(menu()?.days)?menu().days[i]:null)||DEFAULT_DATA.days[i];
-  return `<div class="card"><div class="dayhead"><div><h2>Calories & protein tracking</h2><div class="small">Private to ${esc(myName())} • ${esc(d?.date||'Today')}</div></div><button class="ghost" id="backToTodayBtn">Back to Today</button></div><p class="small">Mark meals eaten on Today, then use Track calories & sync here. You can edit any estimate below.</p></div>${renderMealTrackingCard(i,d)}${renderTrackingMealLog(i,d)}${renderEnergyDashboard(i,d)}`;
+  return `<div class="card"><div class="dayhead"><div><h2>Calories & protein tracking</h2><div class="small">Private to ${esc(myName())} • ${esc(d?.date||'Today')}</div></div><button class="ghost" id="backToTodayBtn">Back to Today</button></div><p class="small">Mark meals eaten on Today, then press <b>Track calories & sync</b> once. PomFit fills those meal estimates; use the meal fields only for corrections.</p></div>${renderMealTrackingCard(i,d)}${renderTrackingMealLog(i,d)}${renderEnergyDashboard(i,d)}`;
 }
 function renderWeek(){
   const source=Array.isArray(menu()?.days)&&menu().days.length?menu().days:(Array.isArray(DEFAULT_DATA?.days)?DEFAULT_DATA.days:[]);
@@ -2059,7 +2060,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v67<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v68<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2288,21 +2289,11 @@ function bindDynamic(){
   $$('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
   $$('[id^="programName_"],[id^="programStart_"]').forEach(el=>el.addEventListener('change',()=>{profileFormDirty=true;}));
   if($('#editEnergyProfileBtn'))$('#editEnergyProfileBtn').onclick=()=>{profileFormDirty=false;ui.tab='profile';render();};
-  $$('[data-use-meal-calories]').forEach(btn=>btn.onclick=async()=>{
-    const i=Number(btn.dataset.useMealCalories),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
-    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),meals={...(day.meals||{}),[slot]:estimate};
-    log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
-  });
   $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
-  });
-  $$('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
-    const i=Number(btn.dataset.useMealProtein),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
-    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),protein_meals={...(day.protein_meals||{}),[slot]:estimate};
-    log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealProtein),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);

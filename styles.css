@@ -339,3 +339,7 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 
 .leftover-prep-question{margin-top:8px;padding:10px;border-radius:12px;background:var(--soft)}
 .leftover-prep-question .meal-actions{margin-top:8px}
+
+.tracking-entry.simplified{grid-template-columns:minmax(120px,1fr) minmax(120px,1fr);align-items:end}
+.tracking-edit-note{grid-column:1/-1}
+@media(max-width:620px){.tracking-entry.simplified{grid-template-columns:1fr}}
