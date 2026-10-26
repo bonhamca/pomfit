@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=62;
+const APP_VERSION=63;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -241,6 +241,59 @@ function proteinLogged(i,d){
   const e=energyDay(i,d),meals=e.protein_meals&&typeof e.protein_meals==='object'?e.protein_meals:{};
   const mealTotal=Object.values(meals).reduce((sum,v)=>sum+(Number(v)||0),0);
   return Math.round(mealTotal+(Number(e.other_protein_g)||0)+supplementProteinLogged(i,d));
+}
+function autoTrackedMealsForDay(i,d){
+  const x=energyDay(i,d)?.auto_tracked_meals;
+  return x&&typeof x==='object'&&!Array.isArray(x)?x:{};
+}
+function checkedMealSlots(i,d){
+  return ['breakfast','lunch','afternoon','dinner'].filter(slot=>{
+    if(!isMealEnabled(slot))return false;
+    return checks()[`${i}-${myView()}-${slot}`]===true;
+  });
+}
+function renderMealTrackingCard(i,d){
+  if(ui.view!==myView())return '';
+  const checked=checkedMealSlots(i,d),auto=autoTrackedMealsForDay(i,d);
+  const synced=checked.filter(slot=>auto[slot]).length;
+  const totalCalories=checked.reduce((sum,slot)=>{
+    const logged=loggedMealCalories(i,d,slot);
+    return sum+(logged??estimateMealCalories(textFor(d,slot,i)));
+  },0);
+  return `<div class="card meal-tracking-card"><div class="dayhead"><div><h3>Track today’s meals</h3><div class="small">${checked.length} meal${checked.length===1?'':'s'} marked eaten • ${synced} auto-tracked</div></div><span class="badge ${checked.length?'ok-badge':'warn-badge'}">${checked.length?'READY':'CHECK MEALS'}</span></div><p class="small">Mark the meals you actually ate above. Then use this button to copy their estimated calories and protein into Today’s totals. Manual calorie/protein entries are preserved.</p><button class="primary" data-track-checked-meals="${i}">Track calories & sync</button><div class="small" data-track-meal-status="${i}">${checked.length?`About ${totalCalories} kcal from the currently checked meals before any manual adjustments.`:'No meals are checked yet.'}</div></div>`;
+}
+async function trackCheckedMealsForDay(i,d){
+  const log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})};
+  const meals={...(day.meals||{})},proteinMeals={...(day.protein_meals||{})},auto={...(day.auto_tracked_meals||{})};
+  const now=new Date().toISOString(),slots=['breakfast','lunch','afternoon','dinner'];
+  let added=0,removed=0,preserved=0;
+  for(const slot of slots){
+    const checked=isMealEnabled(slot)&&checks()[`${i}-${myView()}-${slot}`]===true;
+    const wasAuto=!!auto[slot];
+    if(checked){
+      const mealText=textFor(d,slot,i),cal=estimateMealCalories(mealText),protein=estimateMealProtein(mealText);
+      if(meals[slot]==null||wasAuto)meals[slot]=cal;else preserved++;
+      if(proteinMeals[slot]==null||wasAuto)proteinMeals[slot]=protein;
+      if(meals[slot]===cal&&proteinMeals[slot]===protein){
+        auto[slot]={calories:cal,protein_g:protein,meal_text:mealText,synced_at:now};
+        added++;
+      }else{
+        delete auto[slot];
+      }
+    }else if(wasAuto){
+      delete meals[slot];delete proteinMeals[slot];delete auto[slot];removed++;
+    }
+  }
+  day.meals=meals;day.protein_meals=proteinMeals;day.auto_tracked_meals=auto;day.last_meal_sync_at=now;
+  log[dateKey]=day;
+  await saveSettingAtomic('energy_log',log);
+  return {added,removed,preserved,calories:foodCaloriesLogged(i,d),protein:proteinLogged(i,d)};
+}
+function clearAutoMealTracking(day,slot){
+  const auto={...(day.auto_tracked_meals||{})};
+  delete auto[slot];
+  day.auto_tracked_meals=auto;
+  return day;
 }
 function calorieTargetForDay(i,d){
   const weight=currentWeightForEnergy(i,d),base=baselineMaintenance(weight);
@@ -1663,10 +1716,11 @@ function renderToday(){
   const profileCard=ui.view===myView()?`<div class="card profile-status"><div class="dayhead"><div><h3>My Profile — ${esc(myName())}</h3><div class="small"><b>Diet:</b> ${esc(summary.diet)}<br><b>Training:</b> ${esc(summary.goals)}</div></div><span class="badge ${vitalsComplete()?'ok-badge':'warn-badge'}">${vitalsComplete()?'SAVED':'VITALS NEEDED'}</span></div><button class="secondary" id="todayProfileBtn">${vitalsComplete()?'Edit my profile':'Finish age, height & weight'}</button></div>`:'';
   const groceryCard=`<div class="card grocery-readiness"><div class="dayhead"><div><h3>Weekly groceries</h3><div class="small">${gs.checked} of ${gs.total} confirmed${gs.unavailable?` • ${gs.unavailable} unavailable`:''}.</div></div><span class="badge ${gs.unchecked===0&&gs.unavailable===0?'ok-badge':'warn-badge'}">${gs.unchecked===0&&gs.unavailable===0?'READY':'CHECK'}</span></div><p class="small">Are the groceries needed for this week available? Confirm what you have or bought. If something cannot be obtained, mark it Unavailable and PomFit can offer menu changes.</p><button class="secondary" id="weeklyGroceryBtn">Check weekly groceries</button></div>`;
   const hunger=ui.view===myView()?'<div class="card hunger-card"><h3>Still hungry?</h3><p class="small">Get a small add-on that fits your saved diet, dislikes and fasting window.</p><button class="secondary" id="hungerBtn">I’m still hungry — what can I eat?</button><div id="hungerResult"></div></div>':'';
-  let energy='',todayCard='';
-  try{energy=renderEnergyDashboard(idx,day);}catch(e){console.error('Energy dashboard fallback',e);}
+  let energy='',todayCard='',tracker='';
   try{todayCard=dayCard(day,idx);}catch(e){console.error('Today card fallback',e);todayCard=weekDayCard(day,idx);}
-  return profileCard+energy+groceryCard+todayCard+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
+  try{tracker=renderMealTrackingCard(idx,day);}catch(e){console.error('Meal tracking card fallback',e);}
+  try{energy=renderEnergyDashboard(idx,day);}catch(e){console.error('Energy dashboard fallback',e);}
+  return todayCard+tracker+energy+profileCard+groceryCard+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
 }
 function rawWeekMealText(d,k){
   if(k==='dinner')return d?.dinner||'';
@@ -1758,7 +1812,7 @@ function renderProfile(){
   <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" data-profile-autosave class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label><label class="small">Daily protein target override (g, optional) <input id="profProteinTarget" data-profile-autosave class="search" type="number" min="40" max="400" step="1" value="${esc(p.protein_target_g??'')}" placeholder="Automatic if blank"></label><div id="profileAutosaveStatus" class="small profile-autosave-status">Goal and calorie-target fields save automatically when changed.</div></div>
   <div class="metric"><b>Calorie target setup</b><label class="small">Calorie-equation sex <select id="calorieSex" data-profile-autosave class="search"><option value="">Select</option><option value="male" ${p.calorie_equation_sex==='male'?'selected':''}>Male</option><option value="female" ${p.calorie_equation_sex==='female'?'selected':''}>Female</option><option value="neutral" ${p.calorie_equation_sex==='neutral'?'selected':''}>Neutral midpoint estimate</option></select></label><label class="small">Normal daily activity outside workouts <select id="baselineActivity" data-profile-autosave class="search"><option value="sedentary" ${p.baseline_activity==='sedentary'?'selected':''}>Mostly sitting</option><option value="light" ${(p.baseline_activity||'light')==='light'?'selected':''}>Light movement</option><option value="moderate" ${p.baseline_activity==='moderate'?'selected':''}>Moderately active / on feet</option><option value="active" ${p.baseline_activity==='active'?'selected':''}>Very active outside workouts</option></select></label><label class="small">Desired weight-change pace <select id="goalRate" data-profile-autosave class="search"><option value="0" ${Number(p.goal_rate_lb_week)===0?'selected':''}>Maintain / no calorie adjustment</option><option value=".25" ${Number(p.goal_rate_lb_week)===.25?'selected':''}>0.25 lb/week</option><option value=".5" ${Number(p.goal_rate_lb_week??.5)===.5?'selected':''}>0.5 lb/week</option><option value="1" ${Number(p.goal_rate_lb_week)===1?'selected':''}>1 lb/week</option></select></label><div class="small">Diet style affects meal choices; calorie target is based on body size, daily activity, goal direction, and workout energy. PomFit floors calculated targets at 1,200 kcal/day and labels them as estimates.</div></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
-  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check or add a food</div><input id="foodQuery" class="search" list="foodQueryOptions" placeholder="e.g. sweet potato, shrimp, oatmeal"><datalist id="foodQueryOptions">${[...new Set(Object.values(FOOD_GROUPS).flat())].sort().map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="food-check-actions"><button class="secondary" id="checkFoodBtn">Check food</button><button class="primary" id="addFoodLikeBtn">Add to Foods I like</button></div><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div><div class="small">Checking tells you whether the food fits the selected diet. Adding saves your preference even if PomFit warns that the food is limited, incompatible with the current diet, or not yet recognized.</div></div>
+  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check or add a food</div><input id="foodQuery" class="search" list="foodQueryOptions" placeholder="e.g. sweet potato, shrimp, oatmeal"><datalist id="foodQueryOptions">${[...new Set(Object.values(FOOD_GROUPS).flat())].sort().map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="food-check-actions"><button class="secondary" id="checkFoodBtn">Check food</button><button class="primary" id="addFoodLikeBtn">Add to Foods I like</button></div><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div><div class="small"><b>What these fields do:</b> Foods I like are ranked higher when PomFit generates or swaps meals. Foods I don’t like are filtered out when possible. These are planning preferences only—they do not record what you ate or add calories. Checking tells you whether a food fits the selected diet; adding saves the preference.</div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
   <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
@@ -1768,7 +1822,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v62<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v63<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1908,7 +1962,16 @@ function bindDynamic(){
     }
   };
   $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
-  $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
+  $('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
+  $('[data-track-checked-meals]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.trackCheckedMeals),d=menu().days[i],status=$('[data-track-meal-status="'+i+'"]');
+    try{
+      if(status)status.textContent='Tracking checked meals…';
+      const result=await trackCheckedMealsForDay(i,d);
+      if(status)status.textContent=`Synced ${result.added} checked meal${result.added===1?'':'s'}${result.preserved?`; preserved ${result.preserved} manual entr${result.preserved===1?'y':'ies'}`:''}.`;
+      render();
+    }catch(e){if(status)status.textContent='Meal tracking failed: '+e.message;}
+  });
   $$('[data-prep]').forEach(x=>x.onchange=()=>{saveShared({prep_tasks:prep().map(t=>t.id===x.dataset.prep?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
   $$('[data-g]').forEach(x=>x.onchange=async()=>{
     const updated=groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked,unavailable:x.checked?false:t.unavailable}:t);
@@ -1981,23 +2044,23 @@ function bindDynamic(){
   if($('#editEnergyProfileBtn'))$('#editEnergyProfileBtn').onclick=()=>{profileFormDirty=false;ui.tab='profile';render();};
   $$('[data-use-meal-calories]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useMealCalories),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
-    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{}),[slot]:estimate};
+    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),meals={...(day.meals||{}),[slot]:estimate};
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
-    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{})};
+    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useMealProtein),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
-    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{}),[slot]:estimate};
+    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),protein_meals={...(day.protein_meals||{}),[slot]:estimate};
     log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealProtein),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
-    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{})};
+    const log={...energyLog()},key=isoDateForDay(i,d),day=clearAutoMealTracking({...(log[key]||{})},slot),protein_meals={...(day.protein_meals||{})};
     if(val===null)delete protein_meals[slot];else protein_meals[slot]=val;
     log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
