@@ -343,3 +343,11 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .tracking-entry.simplified{grid-template-columns:minmax(120px,1fr) minmax(120px,1fr);align-items:end}
 .tracking-edit-note{grid-column:1/-1}
 @media(max-width:620px){.tracking-entry.simplified{grid-template-columns:1fr}}
+
+.food-pref-group{margin:8px 0}
+.food-pref-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.food-pref-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;border-radius:999px;background:var(--soft);font-size:.84rem}
+.food-pref-chip.like{outline:1px solid rgba(75,140,95,.35)}
+.food-pref-chip.dislike{outline:1px solid rgba(170,90,90,.35)}
+.food-pref-remove{border:0;background:transparent;padding:0 2px;font-size:1rem;line-height:1;cursor:pointer}
+#saveGoalSettingsBtn{margin-top:10px}
