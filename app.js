@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=57;
+const APP_VERSION=58;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1159,6 +1159,169 @@ function groceryTerms(text){
   const t=normFood(text);
   return [...new Set(GROCERY_TERMS.filter(term=>t.includes(normFood(term))))];
 }
+const SYNC_GROCERY_LIBRARY=[
+  {key:'salmon',category:'Proteins & dairy',label:'Salmon',terms:['salmon']},
+  {key:'white-fish',category:'Proteins & dairy',label:'White fish / cod / tilapia / sole',terms:['cod','tilapia','sole','branzino','sea bass','trout','catfish','fish']},
+  {key:'shrimp',category:'Proteins & dairy',label:'Shrimp / shellfish',terms:['shrimp','shellfish']},
+  {key:'tuna',category:'Proteins & dairy',label:'Tuna',terms:['tuna']},
+  {key:'chicken',category:'Proteins & dairy',label:'Chicken',terms:['chicken']},
+  {key:'beef',category:'Proteins & dairy',label:'Lean beef / sirloin',terms:['beef','steak','sirloin','flank','ground beef']},
+  {key:'eggs',category:'Proteins & dairy',label:'Eggs',terms:['egg','eggs','frittata']},
+  {key:'cheese',category:'Proteins & dairy',label:'Swiss / cheese',terms:['swiss','cheese','parmesan']},
+  {key:'yogurt',category:'Proteins & dairy',label:'Greek yogurt',terms:['greek yogurt','yogurt']},
+  {key:'milk',category:'Proteins & dairy',label:'Milk / unsweetened milk',terms:['milk']},
+  {key:'whey',category:'Proteins & dairy',label:'Protein powder / whey',terms:['whey','protein shake','protein drink','protein coffee']},
+  {key:'chike',category:'Proteins & dairy',label:'Chike',terms:['chike']},
+  {key:'tofu',category:'Proteins & dairy',label:'Tofu / tempeh',terms:['tofu','tempeh']},
+  {key:'greens',category:'Produce',label:'Greens / spinach / romaine',terms:['greens','spinach','romaine','lettuce','salad']},
+  {key:'asparagus',category:'Produce',label:'Asparagus',terms:['asparagus']},
+  {key:'broccoli',category:'Produce',label:'Broccoli',terms:['broccoli']},
+  {key:'green-beans',category:'Produce',label:'Green beans',terms:['green beans']},
+  {key:'zucchini',category:'Produce',label:'Zucchini',terms:['zucchini']},
+  {key:'mushrooms',category:'Produce',label:'Mushrooms',terms:['mushroom','mushrooms']},
+  {key:'cucumber',category:'Produce',label:'Cucumber',terms:['cucumber']},
+  {key:'tomatoes',category:'Produce',label:'Tomatoes',terms:['tomato','tomatoes']},
+  {key:'peppers',category:'Produce',label:'Bell peppers / peppers',terms:['peppers','pepper']},
+  {key:'onion',category:'Produce',label:'Onion',terms:['onion']},
+  {key:'garlic',category:'Produce',label:'Garlic',terms:['garlic']},
+  {key:'ginger',category:'Produce',label:'Fresh ginger',terms:['ginger']},
+  {key:'lemon',category:'Produce',label:'Lemons',terms:['lemon']},
+  {key:'lime',category:'Produce',label:'Limes',terms:['lime']},
+  {key:'avocado',category:'Produce',label:'Avocado',terms:['avocado']},
+  {key:'berries',category:'Produce',label:'Berries',terms:['berries','berry']},
+  {key:'fruit',category:'Produce',label:'Fruit',terms:['fruit','banana','apple','orange','grapefruit']},
+  {key:'peas',category:'Produce',label:'Peas',terms:['peas']},
+  {key:'beans',category:'Pantry / grains',label:'Beans / chickpeas',terms:['beans','bean','chickpeas']},
+  {key:'lentils',category:'Pantry / grains',label:'Lentils',terms:['lentils','lentil']},
+  {key:'hummus',category:'Pantry / grains',label:'Hummus',terms:['hummus']},
+  {key:'whole-grain',category:'Pantry / grains',label:'Whole-grain bread / grain',terms:['whole grain','whole-grain','bread','toast','crackers']},
+  {key:'rice',category:'Pantry / grains',label:'Rice',terms:['rice']},
+  {key:'potato',category:'Pantry / grains',label:'Potatoes',terms:['potato','potatoes']},
+  {key:'oats',category:'Pantry / grains',label:'Oats / oatmeal',terms:['oats','oatmeal']},
+  {key:'olive-oil',category:'Pantry / seasonings',label:'Olive oil',terms:['olive oil']},
+  {key:'nuts',category:'Pantry / seasonings',label:'Nuts / pistachios / walnuts',terms:['nuts','pistachios','walnuts','almonds']},
+  {key:'seeds',category:'Pantry / seasonings',label:'Pepitas / seeds',terms:['pepitas','seeds','pumpkin seeds']},
+  {key:'soy',category:'Pantry / seasonings',label:'Low-sodium soy sauce',terms:['soy sauce','soy-ginger']},
+  {key:'harissa',category:'Pantry / seasonings',label:'Harissa',terms:['harissa']},
+  {key:'worcestershire',category:'Pantry / seasonings',label:'Worcestershire sauce',terms:['worcestershire']},
+  {key:'butter',category:'Pantry / seasonings',label:'Butter',terms:['butter']},
+  {key:'capers',category:'Pantry / seasonings',label:'Capers',terms:['capers']}
+];
+const VEGETARIAN_SHARED_DINNERS=[
+  'MEDITERRANEAN LENTIL BOWL: lentils with spinach, tomato, cucumber and olive oil. Optional whole grain on the side.',
+  'VEGETABLE FRITTATA: eggs with spinach, mushrooms, tomato and Swiss cheese. Side salad with olive oil.'
+];
+function dietAllowsMealText(text,diet=dietStyle()){
+  const t=normFood(text);
+  if(diet==='vegetarian' && /\b(chicken|beef|steak|sirloin|flank|pork|salmon|tuna|cod|tilapia|sole|branzino|sea bass|catfish|trout|shrimp|fish|shellfish|meat)\b/.test(t))return false;
+  if(diet==='pescatarian' && /\b(chicken|beef|steak|sirloin|flank|pork|hot dog|meat)\b/.test(t))return false;
+  return true;
+}
+function mealFitsProfile(text){
+  if(!dietAllowsMealText(text))return false;
+  return !foodList('food_dislikes').some(d=>prefMatchesText(d,text));
+}
+function rankedDinnerChoices(){
+  let choices=[...sharedDinnerAlternatives(),...VEGETARIAN_SHARED_DINNERS].filter(x=>dietAllowsMealText(x));
+  const dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
+  const clean=choices.filter(x=>!dislikes.some(d=>prefMatchesText(d,x)));
+  if(clean.length)choices=clean;
+  return choices.sort((a,b)=>{
+    const sa=likes.reduce((n,l)=>n+(prefMatchesText(l,a)?2:0),0);
+    const sb=likes.reduce((n,l)=>n+(prefMatchesText(l,b)?2:0),0);
+    return sb-sa;
+  });
+}
+function buildSyncedMenuFromProfile(){
+  const current=JSON.parse(JSON.stringify(menu()));
+  const choices=rankedDinnerChoices();
+  if(!Array.isArray(current.days))current.days=[];
+  current.days=current.days.slice(0,7).map((d,i)=>{
+    if(mealFitsProfile(d?.dinner||''))return d;
+    const replacement=choices[i%Math.max(choices.length,1)]||d?.dinner||'Choose a compatible shared dinner';
+    return {...d,dinner:replacement};
+  });
+  return current;
+}
+function cleanMealOverridesForProfile(){
+  const source=mealOverrides(),out={};
+  for(const [key,value] of Object.entries(source)){
+    if(mealFitsProfile(value))out[key]=value;
+  }
+  return out;
+}
+function effectivePlanTexts(menuObj=menu()){
+  const texts=[];
+  const days=Array.isArray(menuObj?.days)?menuObj.days:[];
+  days.forEach((d,i)=>{
+    if(d?.dinner)texts.push(d.dinner);
+    if(d?.flavor_override?.recipe)texts.push(d.flavor_override.recipe);
+    if(profileReady()){
+      for(const slot of ['breakfast','lunch','afternoon']){
+        if(!isMealEnabled(slot))continue;
+        try{const t=chooseMeal(slot,i,`${i}-${myView()}-${slot}`);if(t)texts.push(t);}catch{}
+      }
+    }
+    // Keep baseline household foods represented so syncing one person's profile does not erase the other person's known staples.
+    for(const t of [d?.lunch,d?.elizabeth_breakfast,d?.elizabeth_snack,d?.clark_am,d?.clark_afternoon])if(t)texts.push(t);
+  });
+  return texts;
+}
+function groceryMatchCount(texts,item){
+  return texts.reduce((n,text)=>{
+    const t=normFood(text);
+    return n+(item.terms.some(term=>t.includes(normFood(term)))?1:0);
+  },0);
+}
+function generateSyncedGroceries(menuObj=menu()){
+  const texts=effectivePlanTexts(menuObj);
+  const old=Array.isArray(shared?.groceries)?shared.groceries:[];
+  const oldById=new Map(old.filter(Boolean).map(x=>[x.id,x]));
+  const generated=SYNC_GROCERY_LIBRARY.map(item=>({...item,count:groceryMatchCount(texts,item)}))
+    .filter(item=>item.count>0)
+    .map(item=>{
+      const id=`sync-${item.key}`,prior=oldById.get(id)||old.find(x=>normFood(x?.text).includes(normFood(item.label.split(' / ')[0])));
+      return {
+        id,category:item.category,
+        text:`${item.label} • ${item.count} planned use${item.count===1?'':'s'}`,
+        checked:!!prior?.checked,unavailable:!!prior?.unavailable,synced:true
+      };
+    });
+  const custom=old.filter(x=>x?.custom||x?.use_this_week).map(x=>({...x}));
+  const seen=new Set(generated.map(x=>x.id));
+  for(const x of custom)if(!seen.has(x.id)){generated.push(x);seen.add(x.id);}
+  return generated;
+}
+function synchronizedPrepTasks(){
+  const old=Array.isArray(shared?.prep_tasks)?shared.prep_tasks:[];
+  const checked=Object.fromEntries(old.map(x=>[x.id,!!x.checked]));
+  const days=(Array.isArray(menu()?.days)?menu().days:[]).slice(0,7).map((d,i)=>({
+    id:`day-prep-${i}`,
+    text:`${d.date}: ${dayPrepText(d,i)}`,
+    checked:checked[`day-prep-${i}`]||checked[`dinner-prep-${i}`]||false
+  }));
+  const generic=[
+    {id:'prep-pack',text:'Pack next-day lunches the night before; keep dressings, sauces, nuts/seeds and cheese separate until eating.'},
+    {id:'prep-portion',text:'Portion proteins, oils/fats, nuts/seeds and other calorie-dense add-ons before serving.'},
+    {id:'prep-produce',text:'Wash/chop the produce used by this week’s selected meals so substitutions are easy.'}
+  ].map(x=>({...x,checked:checked[x.id]||false}));
+  return [...days,...generic];
+}
+async function syncWeeklyPlanFromSelections(statusEl=null){
+  if(statusEl){statusEl.textContent='Syncing menu, prep and groceries…';statusEl.className='small';}
+  const cleaned=cleanMealOverridesForProfile();
+  const priorOverrides=mealOverrides();
+  if(JSON.stringify(cleaned)!==JSON.stringify(priorOverrides))await saveSettingAtomic('meal_overrides',cleaned);
+  const updatedMenu=buildSyncedMenuFromProfile();
+  const priorMenu=shared?.menu;
+  shared={...shared,menu:updatedMenu};
+  const updatedPrep=synchronizedPrepTasks();
+  const updatedGroceries=generateSyncedGroceries(updatedMenu);
+  shared={...shared,menu:priorMenu};
+  await saveShared({menu:updatedMenu,prep_tasks:updatedPrep,groceries:updatedGroceries});
+  if(statusEl){statusEl.textContent=`Synced: ${updatedMenu.days?.length||0} menu days • ${updatedPrep.length} prep tasks • ${updatedGroceries.length} grocery items.`;statusEl.className='small save-ok';}
+  return {menu:updatedMenu,prep:updatedPrep,groceries:updatedGroceries};
+}
 function unavailableTerms(){
   return [...new Set(groceryUnavailable().flatMap(x=>groceryTerms(x.text)))];
 }
@@ -1420,21 +1583,7 @@ function dayPrepText(d,i){
   if(lp?.use===true)parts.push(`Reserve ${lunchReserveOz()} oz cooked ${mealProtein(d.dinner)} before serving/adding extra sauce for tomorrow's lunch.`);
   return parts.filter(Boolean).join(' ');
 }
-function generatedPrepTasks(){
-  const old=Array.isArray(shared?.prep_tasks)?shared.prep_tasks:[];
-  const checked=Object.fromEntries(old.map(x=>[x.id,!!x.checked]));
-  const days=menu().days.map((d,i)=>({
-    id:`dinner-prep-${i}`,
-    text:`${d.date}: ${prepInstructionForMeal(d.dinner,'dinner')}${d.flavor_override?' Flavor mix: '+d.flavor_override.name+' — '+d.flavor_override.recipe+'.':''}`,
-    checked:checked[`dinner-prep-${i}`]||false
-  }));
-  const generic=[
-    {id:'prep-pack','text':'Pack next-day lunches the night before; keep dressings, sauces, nuts/seeds and cheese separate until eating.'},
-    {id:'prep-portion','text':'Portion proteins, oils/fats, nuts/seeds and other calorie-dense add-ons before serving.'},
-    {id:'prep-produce','text':'Wash/chop commonly used vegetables and salad produce so substitutions are easy.'}
-  ].map(x=>({...x,checked:checked[x.id]||false}));
-  return [...days,...generic];
-}
+function generatedPrepTasks(){return synchronizedPrepTasks();}
 function dayCard(d,i){
   let w='';
   if(workoutShown(ui.view)){
@@ -1480,25 +1629,34 @@ function renderWeek(){
   return `<div class="card week-summary"><div class="dayhead"><div><h2>Weekly menu</h2><div class="small">${days.length} day${days.length===1?'':'s'} loaded • ${esc(ui.view)} view</div></div><span class="badge ${days.length===7?'ok-badge':'warn-badge'}">${days.length===7?'7 DAYS':'CHECK MENU'}</span></div><p class="small">This view is intentionally menu-only so one calorie, workout, or drink control cannot prevent the rest of the week from displaying.</p></div><div class="weekgrid">${days.map((d,i)=>weekDayCard(d,i)).join('')}</div>`;
 }
 function renderPrep(){return `<div class="card"><h2>Shared meal prep</h2><ul class="list">${prep().map(x=>`<li><input type="checkbox" data-prep="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('')}</ul></div>`;}
-function renderGrocery(){
-  const all=groceryActive(),visible=groceryMode==='needs'?all.filter(x=>!x.checked||x.unavailable):all;
-  const cats={};visible.forEach(x=>(cats[x.category]??=[]).push(x));
-  const gs=grocerySummary(),affected=affectedMeals();
-  let h=`<div class="card grocery-audit"><h2>Are this week’s groceries available?</h2><p>Check items you already have or have purchased. If an item cannot be obtained, mark it <b>Unavailable</b>. PomFit will not change meals merely because an item is unchecked.</p><div class="small"><b>${gs.checked}</b> confirmed • <b>${gs.unchecked}</b> still to get/confirm • <b>${gs.unavailable}</b> unavailable</div><div class="controls"><button class="secondary" id="shopRemainingBtn">Shop / show remaining</button><button class="ghost" id="showAllGroceriesBtn">Show all</button></div><p class="small">Preference-aware: items matching your saved dislikes are flagged. When PomFit changes your personal meals, it filters dislikes and ranks liked foods first.</p></div>`;
-  h+=`<div class="card on-hand-card"><h3>Already have something you want to use?</h3><p class="small">Add an ingredient that is already in the house but is not on this week's list. PomFit will mark it available and, when possible, offer a meal that uses it.</p><div class="on-hand-entry"><input id="onHandGroceryInput" class="search" placeholder="e.g. cod, asparagus, ground beef"><button class="secondary" id="addOnHandGroceryBtn">Add on hand</button></div><div id="onHandGroceryStatus" class="small"></div></div>`;
+function renderGroceryBody(){
+  const all=groceryActive().filter(x=>x&&typeof x==='object'&&x.id&&x.text);
+  const visible=groceryMode==='needs'?all.filter(x=>!x.checked||x.unavailable):all;
+  const cats={};visible.forEach(x=>(cats[x.category||'Other']??=[]).push(x));
+  const gs={total:all.length,checked:all.filter(x=>x.checked).length,unchecked:all.filter(x=>!x.checked&&!x.unavailable).length,unavailable:all.filter(x=>x.unavailable).length};
+  let affected=[];try{affected=affectedMeals();}catch(e){console.error('Affected-meal check failed',e);}
+  let h=`<div class="card grocery-audit"><div class="dayhead"><div><h2>Weekly groceries</h2><div class="small">Synced to the current menu/profile selections.</div></div><button class="secondary" id="syncWeeklyPlanBtn">Sync weekly plan</button></div><div id="planSyncStatus" class="small"></div><p>Check items you already have or have purchased. If an item cannot be obtained, mark it <b>Unavailable</b>.</p><div class="small"><b>${gs.checked}</b> confirmed • <b>${gs.unchecked}</b> still to get/confirm • <b>${gs.unavailable}</b> unavailable</div><div class="controls"><button class="secondary" id="shopRemainingBtn">Shop / show remaining</button><button class="ghost" id="showAllGroceriesBtn">Show all</button></div></div>`;
+  h+=`<div class="card on-hand-card"><h3>Already have something you want to use?</h3><p class="small">Add an ingredient that is already in the house. It will be preserved when the weekly plan is re-synced.</p><div class="on-hand-entry"><input id="onHandGroceryInput" class="search" placeholder="e.g. cod, asparagus, ground beef"><button class="secondary" id="addOnHandGroceryBtn">Add on hand</button></div><div id="onHandGroceryStatus" class="small"></div></div>`;
   if(gs.unavailable){
-    h+=`<div class="card grocery-action"><h3>${gs.unavailable} unavailable item${gs.unavailable===1?'':'s'}</h3><p>${affected.length?`${affected.length} current meal${affected.length===1?' is':'s are'} affected.`:'No current meal in your view appears to depend on them.'}</p>${affected.length?`<ul>${affected.slice(0,8).map(x=>`<li>${esc(x.label)} — ${esc(x.slot)}: ${esc(mealTitle(x.text))} <span class="small">(${esc(x.terms.join(', '))})</span></li>`).join('')}</ul><button class="primary" id="changeAffectedMealsBtn">Change affected meals</button>`:''}<button class="secondary" id="keepMenuShopBtn">Keep menu — I’ll shop for them</button></div>`;
+    h+=`<div class="card grocery-action"><h3>${gs.unavailable} unavailable item${gs.unavailable===1?'':'s'}</h3><p>${affected.length?`${affected.length} current meal${affected.length===1?' is':'s are'} affected.`:'No current meal appears to depend on them.'}</p>${affected.length?`<button class="primary" id="changeAffectedMealsBtn">Change affected meals and re-sync</button>`:''}<button class="secondary" id="keepMenuShopBtn">Keep menu — I’ll shop for them</button></div>`;
   }else if(gs.unchecked){
-    h+=`<div class="card"><h3>${gs.unchecked} items still unconfirmed</h3><p class="small">Either check them once you have them, or mark any you cannot obtain as Unavailable. Only unavailable items trigger meal-change suggestions.</p></div>`;
+    h+=`<div class="card"><h3>${gs.unchecked} items still unconfirmed</h3><p class="small">Check items when available. Only unavailable items force meal substitutions.</p></div>`;
   }else{
-    h+=`<div class="card"><h3>Groceries confirmed</h3><p class="small">Everything needed on the shared list is marked available/purchased.</p></div>`;
+    h+=`<div class="card"><h3>Groceries confirmed</h3><p class="small">Everything currently required is marked available/purchased.</p></div>`;
   }
   h+='<div class="gcols">';
   for(const [cat,items] of Object.entries(cats)){
-    h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list grocery-list">${items.map(x=>{const p=groceryPreference(x);return `<li class="${x.unavailable?'grocery-unavailable':''}"><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><div class="grocery-item-text"><label class="${x.checked?'done':''}">${esc(x.text)}</label>${p.dislike?`<div class="small pref-warn">Your profile dislikes: ${esc(p.dislike)}</div>`:p.like?`<div class="small pref-like">Matches a liked food: ${esc(p.like)}</div>`:''}</div>${x.use_this_week?'<span class="badge">ON HAND</span>':''}${x.use_this_week&&menuSuggestionForOnHand(x)&&!onHandUsedInMenu(x)?`<button class="secondary grocery-use-btn" data-use-on-hand="${esc(x.id)}">Use in menu</button>`:x.use_this_week&&onHandUsedInMenu(x)?'<span class="small">Used in menu</span>':''}<button class="ghost grocery-unavailable-btn" data-g-unavailable="${esc(x.id)}">${x.unavailable?'Available after all':'Unavailable'}</button></li>`}).join('')}</ul></section>`;
+    h+=`<section class="card"><h3>${esc(cat)}</h3><ul class="list grocery-list">${items.map(x=>{const p=groceryPreference(x);return `<li class="${x.unavailable?'grocery-unavailable':''}"><input type="checkbox" data-g="${esc(x.id)}" ${x.checked?'checked':''}><div class="grocery-item-text"><label class="${x.checked?'done':''}">${esc(x.text)}</label>${p.dislike?`<div class="small pref-warn">Your profile dislikes: ${esc(p.dislike)}</div>`:p.like?`<div class="small pref-like">Matches a liked food: ${esc(p.like)}</div>`:''}</div>${x.use_this_week?'<span class="badge">ON HAND</span>':''}<button class="ghost grocery-unavailable-btn" data-g-unavailable="${esc(x.id)}">${x.unavailable?'Available after all':'Unavailable'}</button></li>`}).join('')}</ul></section>`;
   }
   h+='</div><div class="card"><button class="ghost" id="resetG">Reset shared grocery checks</button></div>';
   return h;
+}
+function renderGrocery(){
+  try{return renderGroceryBody();}
+  catch(e){
+    console.error('Grocery render failed',e);
+    return `<div class="card"><h2>Weekly groceries</h2><p>The grocery screen hit a rendering problem, but your saved data is still intact.</p><p class="small">${esc(e?.message||'Unknown grocery render error')}</p><button class="primary" id="repairGroceryBtn">Rebuild groceries from weekly plan</button><div id="planSyncStatus" class="small"></div></div>`;
+  }
 }
 function renderSeason(){return `<div class="card"><h2>Seasoning library</h2><input id="seasonSearch" class="search" placeholder="Search soy, fish, asparagus, smoky…"><div class="season" id="seasonList">${menu().seasonings.map(s=>`<details data-search="${esc((s.name+' '+s.best+' '+s.recipe).toLowerCase())}"><summary>${esc(s.name)} <span class="small">• ${esc(s.sodium)} sodium</span></summary><p><b>Best with:</b> ${esc(s.best)}</p><p><b>Mix:</b> ${esc(s.recipe)}</p></details>`).join('')}</div></div>`;}
 function renderPelotonRoadmap(){
@@ -1535,10 +1693,10 @@ function renderProfile(){
   <div class="metric"><b>Resistance equipment available</b><div class="controls">${equip('bowflex','Bowflex / home gym')}${equip('dumbbells','Dumbbells')}${equip('bands','Resistance bands')}${equip('cable','Cable machine')}${equip('barbell','Barbell / rack')}${equip('kettlebell','Kettlebells')}${equip('trx','TRX / suspension trainer')}${equip('bodyweight','Bodyweight only')}</div><label class="small">Device/model or equipment notes <input id="equipmentNotes" class="search" value="${esc(p.equipment_notes||'')}" placeholder="e.g. Bowflex PR3000, adjustable dumbbells to 50 lb"></label></div>
   <div class="metric"><b>Cardio / smart-training devices</b><p class="small">If a device uses a structured program, enter its program name and start date. Recognized Peloton Power Zone programs use PomFit's built-in week-by-week planning presets from the start date; this is not live Peloton-account sync. Other devices/programs can still use custom days. Program sessions take priority when PomFit schedules strength, HIIT and recovery.</p><div class="controls">${equip('peloton_bike','Peloton Bike')}${equip('peloton_tread','Peloton Tread')}${equip('peloton_row','Peloton Row')}${equip('tonal','Tonal')}${equip('hydrow','Hydrow')}${equip('ifit','NordicTrack / iFIT')}${equip('concept2','Concept2')}${equip('other_program','Other program/device')}</div><div class="programs-wrap">${programRow('peloton_bike','Peloton Bike')}${programRow('peloton_tread','Peloton Tread')}${programRow('peloton_row','Peloton Row')}${programRow('tonal','Tonal')}${programRow('hydrow','Hydrow')}${programRow('ifit','NordicTrack / iFIT')}${programRow('concept2','Concept2')}${programRow('other_program','Other')}</div></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
-  </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
+  </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v57<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v58<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1547,7 +1705,9 @@ function render(){
   $$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===ui.tab));
   $('#workoutToggle').checked=workoutShown(ui.view);
   const pages={today:renderToday,week:renderWeek,prep:renderPrep,grocery:renderGrocery,season:renderSeason,workout:renderWorkout,profile:renderProfile,account:renderAccount};
-  $('#content').innerHTML=pages[ui.tab]();bindDynamic();
+  try{$('#content').innerHTML=(pages[ui.tab]||renderToday)();}
+  catch(e){console.error('Page render failed',ui.tab,e);$('#content').innerHTML=`<div class="card"><h2>PomFit page error</h2><p>This page could not render, but the rest of PomFit is still available.</p><p class="small">${esc(e?.message||'Unknown render error')}</p></div>`;}
+  bindDynamic();
 }
 async function saveSettingAtomic(key,value){
   const r=await supabase.rpc('save_my_setting',{p_key:key,p_value:value});
@@ -1635,8 +1795,11 @@ async function savePersonal(patch){
   return r.data;
 }
 async function saveShared(patch){
-  shared={...shared,...patch,updated_at:new Date().toISOString(),updated_by:session.user.id};syncMsg('Saving shared changes…');
-  const r=await supabase.from('household_state').update({...patch,updated_at:shared.updated_at,updated_by:session.user.id}).eq('household_id',profile.household_id);syncMsg(r.error?'Shared save failed':'Synced');
+  const prior=shared,updatedAt=new Date().toISOString();
+  shared={...shared,...patch,updated_at:updatedAt,updated_by:session.user.id};syncMsg('Saving shared changes…');
+  const r=await supabase.from('household_state').update({...patch,updated_at:updatedAt,updated_by:session.user.id}).eq('household_id',profile.household_id);
+  if(r.error){shared=prior;syncMsg('Shared save failed');throw r.error;}
+  syncMsg('Synced');return shared;
 }
 let noteTimer;
 function bindDynamic(){
@@ -1647,6 +1810,14 @@ function bindDynamic(){
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false,unavailable:false}))}).then(render);
   if($('#weeklyGroceryBtn'))$('#weeklyGroceryBtn').onclick=()=>{ui.tab='grocery';groceryMode='needs';render();};
+  if($('#syncWeeklyPlanBtn'))$('#syncWeeklyPlanBtn').onclick=async()=>{
+    const status=$('#planSyncStatus');
+    try{await syncWeeklyPlanFromSelections(status);render();}catch(e){if(status){status.textContent='Sync failed: '+e.message;status.className='small save-warn';}}
+  };
+  if($('#repairGroceryBtn'))$('#repairGroceryBtn').onclick=async()=>{
+    const status=$('#planSyncStatus');
+    try{await syncWeeklyPlanFromSelections(status);ui.tab='grocery';groceryMode='all';render();}catch(e){if(status){status.textContent='Repair failed: '+e.message;status.className='small save-warn';}}
+  };
   if($('#shopRemainingBtn'))$('#shopRemainingBtn').onclick=()=>{groceryMode='needs';render();};
   if($('#showAllGroceriesBtn'))$('#showAllGroceriesBtn').onclick=()=>{groceryMode='all';render();};
   if($('#addOnHandGroceryBtn'))$('#addOnHandGroceryBtn').onclick=async()=>{
@@ -1786,12 +1957,17 @@ function bindDynamic(){
     try{profileFormDirty=true;await saveProfileFormNow(status);}catch(e){if(status){status.textContent='Autosave failed: '+e.message;status.className='small profile-autosave-status save-warn';}}
   });
   if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
-    const status=$('#profileSaveStatus');
+    const status=$('#profileSaveStatus'),syncStatusEl=$('#profilePlanSyncStatus');
     try{
       const {next,saved}=await saveProfileFormNow(status);
       const vitalOk=Number(saved.age)===Number(next.age)&&Number(saved.height_in)===Number(next.height_in)&&Number(saved.weight_lb)===Number(next.weight_lb);
       if(status)status.textContent=vitalOk?'Profile saved and verified.':'Profile saved, but age/height/weight did not verify.';
-    }catch(e){if(status)status.textContent='Save failed: '+e.message;}
+      await syncWeeklyPlanFromSelections(syncStatusEl);
+    }catch(e){if(status)status.textContent='Save/sync failed: '+e.message;}
+  };
+  if($('#syncProfilePlanBtn'))$('#syncProfilePlanBtn').onclick=async()=>{
+    const status=$('#profilePlanSyncStatus');
+    try{profileFormDirty=true;await saveProfileFormNow($('#profileSaveStatus'));await syncWeeklyPlanFromSelections(status);}catch(e){if(status){status.textContent='Sync failed: '+e.message;status.className='small save-warn';}}
   };
   $$('[data-whey-flavor]').forEach(sel=>sel.onchange=async()=>{
     const all={...wheyFlavorPlans()};
