@@ -351,3 +351,8 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .food-pref-chip.dislike{outline:1px solid rgba(170,90,90,.35)}
 .food-pref-remove{border:0;background:transparent;padding:0 2px;font-size:1rem;line-height:1;cursor:pointer}
 #saveGoalSettingsBtn{margin-top:10px}
+
+.week-menu-card .week-meal-row.editable{grid-template-columns:145px minmax(0,1fr) auto;align-items:center}
+.week-menu-card .week-meal-row.editable>div:first-child{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.week-change-meal{white-space:nowrap}
+@media(max-width:720px){.week-menu-card .week-meal-row.editable{grid-template-columns:1fr}.week-change-meal{width:100%}}

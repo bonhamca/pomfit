@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=70';
+import { DEFAULT_DATA } from './data.js?v=71';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=70;
+const APP_VERSION=71;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -917,67 +917,91 @@ function freshLunchAlternative(dayIndex,avoid=[]){
 }
 const NO_COOK_LUNCHES={
   balanced:[
-    ['Tuna pouch with cucumber, tomato, whole-grain crackers and fruit',['tuna','cucumber','tomato','whole grain','fruit']],
-    ['Rotisserie chicken with bagged salad, olive oil and fruit',['chicken','salad','olive oil','fruit']],
-    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein']]
+    ['Tuna pouch with cucumber, tomato, whole-grain crackers and fruit',['tuna','cucumber','tomato','whole grain','fruit'],['tuna-pouch']],
+    ['Rotisserie chicken with bagged salad, olive oil and fruit',['chicken','salad','olive oil','fruit'],['rotisserie-chicken']],
+    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein'],['greek-yogurt']],
+    ['Protein shake with Swiss cheese, fruit and pistachios',['protein','swiss','fruit','pistachios'],['whey','swiss']]
   ],
   performance:[
-    ['Rotisserie chicken with bagged salad, fruit and whole-grain crackers',['chicken','salad','fruit','whole grain']],
-    ['Tuna pouch with whole-grain crackers, cucumber and fruit',['tuna','whole grain','cucumber','fruit']],
-    ['Greek yogurt, berries, nuts and a ready-to-drink protein shake',['yogurt','berries','nuts','protein']]
+    ['Tuna pouch with whole-grain crackers, cucumber and fruit',['tuna','whole grain','cucumber','fruit'],['tuna-pouch']],
+    ['Greek yogurt, berries, nuts and a ready-to-drink protein shake',['yogurt','berries','nuts','protein'],['greek-yogurt']],
+    ['Protein shake with Swiss cheese, fruit and whole-grain crackers',['protein','swiss','fruit','whole grain'],['whey','swiss']],
+    ['Rotisserie chicken with bagged salad, fruit and whole-grain crackers',['chicken','salad','fruit','whole grain'],['rotisserie-chicken']]
   ],
   musclegain:[
-    ['Rotisserie chicken with bagged greens, cheese and fruit',['chicken','greens','cheese','fruit']],
-    ['Tuna pouch with Swiss cheese, whole-grain crackers and fruit',['tuna','swiss','whole grain','fruit']],
-    ['Greek yogurt plus a ready-to-drink protein shake, berries and nuts',['yogurt','protein','berries','nuts']]
+    ['Tuna pouch with Swiss cheese, whole-grain crackers and fruit',['tuna','swiss','whole grain','fruit'],['tuna-pouch','swiss']],
+    ['Greek yogurt plus a ready-to-drink protein shake, berries and nuts',['yogurt','protein','berries','nuts'],['greek-yogurt']],
+    ['Protein shake with Swiss cheese and pistachios plus fruit',['protein','swiss','pistachios','fruit'],['whey','swiss']],
+    ['Rotisserie chicken with bagged greens, cheese and fruit',['chicken','greens','cheese','fruit'],['rotisserie-chicken']]
   ],
   mediterranean:[
-    ['Tuna pouch with tomato, cucumber, olives and greens',['tuna','tomato','cucumber','olives','greens']],
-    ['Hummus, cucumber, tomato, whole-grain crackers and Greek yogurt',['hummus','cucumber','tomato','whole grain','yogurt']],
-    ['Greek yogurt with berries and nuts plus fruit',['yogurt','berries','nuts','fruit']]
+    ['Tuna pouch with tomato, cucumber, olives and greens',['tuna','tomato','cucumber','olives','greens'],['tuna-pouch']],
+    ['Hummus, cucumber, tomato, whole-grain crackers and Greek yogurt',['hummus','cucumber','tomato','whole grain','yogurt'],['hummus']],
+    ['Greek yogurt with berries and nuts plus fruit',['yogurt','berries','nuts','fruit'],['greek-yogurt']]
   ],
   lowcarb:[
-    ['Tuna pouch with cucumber, tomato and Swiss cheese',['tuna','cucumber','tomato','swiss']],
-    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado']],
-    ['Smoked salmon with cucumber and Swiss cheese',['salmon','cucumber','swiss']]
+    ['Tuna pouch with cucumber, tomato and Swiss cheese',['tuna','cucumber','tomato','swiss'],['tuna-pouch','swiss']],
+    ['Smoked salmon with cucumber and Swiss cheese',['salmon','cucumber','swiss'],['smoked-salmon','swiss']],
+    ['Protein shake with Swiss cheese and pistachios',['protein','swiss','pistachios'],['whey','swiss']],
+    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado'],['rotisserie-chicken']]
   ],
   keto:[
-    ['Tuna pouch with avocado, cucumber and olive oil',['tuna','avocado','cucumber','olive oil']],
-    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado']],
-    ['Smoked salmon with cucumber, Swiss cheese and olive oil',['salmon','cucumber','swiss','olive oil']]
+    ['Tuna pouch with avocado, cucumber and olive oil',['tuna','avocado','cucumber','olive oil'],['tuna-pouch']],
+    ['Smoked salmon with cucumber, Swiss cheese and olive oil',['salmon','cucumber','swiss','olive oil'],['smoked-salmon','swiss']],
+    ['Protein shake with Swiss cheese and pistachios',['protein','swiss','pistachios'],['whey','swiss']],
+    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado'],['rotisserie-chicken']]
   ],
   pescatarian:[
-    ['Tuna pouch with cucumber, tomato and greens',['tuna','cucumber','tomato','greens']],
-    ['Smoked salmon with cucumber, greens and avocado',['salmon','cucumber','greens','avocado']],
-    ['Greek yogurt with berries and pistachios plus a protein drink',['yogurt','berries','pistachios','protein']]
+    ['Tuna pouch with cucumber, tomato and greens',['tuna','cucumber','tomato','greens'],['tuna-pouch']],
+    ['Smoked salmon with cucumber, greens and avocado',['salmon','cucumber','greens','avocado'],['smoked-salmon']],
+    ['Greek yogurt with berries and pistachios plus a protein drink',['yogurt','berries','pistachios','protein'],['greek-yogurt']]
   ],
   vegetarian:[
-    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein']],
-    ['Hummus with cucumber, tomato, Swiss cheese and whole-grain crackers',['hummus','cucumber','tomato','swiss','whole grain']],
-    ['Swiss cheese, fruit, pistachios and a protein shake',['swiss','fruit','pistachios','protein']]
+    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein'],['greek-yogurt']],
+    ['Hummus with cucumber, tomato, Swiss cheese and whole-grain crackers',['hummus','cucumber','tomato','swiss','whole grain'],['hummus','swiss']],
+    ['Swiss cheese, fruit, pistachios and a protein shake',['swiss','fruit','pistachios','protein'],['swiss','whey']]
   ]
 };
+function ingredientAvailable(key){
+  return groceryActive().some(x=>{
+    const itemKey=x.ingredient_key||inventoryIngredientKey(x.text);
+    return itemKey===key && (x.checked===true||x.use_this_week===true) && x.unavailable!==true;
+  });
+}
+function noCookLunchRecord(text){
+  const n=normFood(text);
+  for(const rows of Object.values(NO_COOK_LUNCHES)){
+    const hit=rows.find(x=>normFood(x[0])===n);
+    if(hit)return {text:hit[0],tags:hit[1],requires:hit[2]||[]};
+  }
+  return null;
+}
 function noCookLunchCandidates(){
   const diet=dietStyle(),dislikes=foodList('food_dislikes'),likes=foodList('food_likes'),unavailable=unavailableTerms();
   const source=NO_COOK_LUNCHES[diet]||NO_COOK_LUNCHES.balanced;
-  let ranked=source.map((x,idx)=>({
-    text:x[0],tags:x[1],idx,
-    blocked:dislikes.some(d=>x[1].some(t=>t.includes(d)||d.includes(t))),
-    unavailable:unavailable.some(t=>normFood(x[0]).includes(normFood(t))),
-    score:likes.reduce((n,l)=>n+(x[1].some(t=>t.includes(l)||l.includes(t))?2:0),0)
-  }));
+  let ranked=source.map((x,idx)=>{
+    const requires=x[2]||[],availableCount=requires.filter(ingredientAvailable).length,fullyAvailable=requires.length>0&&availableCount===requires.length;
+    return {
+      text:x[0],tags:x[1],requires,idx,fullyAvailable,availableCount,
+      blocked:dislikes.some(d=>x[1].some(t=>t.includes(d)||d.includes(t))),
+      unavailable:unavailable.some(t=>normFood(x[0]).includes(normFood(t))),
+      score:likes.reduce((n,l)=>n+(x[1].some(t=>t.includes(l)||l.includes(t))?2:0),0)
+    };
+  });
   let usable=ranked.filter(x=>!x.blocked&&!x.unavailable);
   if(!usable.length)usable=ranked.filter(x=>!x.blocked);
   if(!usable.length)usable=ranked;
-  usable.sort((a,b)=>b.score-a.score||a.idx-b.idx);
+  usable.sort((a,b)=>Number(b.fullyAvailable)-Number(a.fullyAvailable)||b.availableCount-a.availableCount||b.score-a.score||a.idx-b.idx);
   return usable.map(x=>x.text);
 }
 function chooseNoCookLunch(dayIndex,avoid=[]){
   const blocked=new Set(avoid.filter(Boolean).map(x=>String(x).toLowerCase()));
-  const choices=noCookLunchCandidates().filter(x=>!blocked.has(String(x).toLowerCase()));
-  const all=choices.length?choices:noCookLunchCandidates();
-  return all[dayIndex%Math.max(all.length,1)]||'Ready-to-drink protein shake with a compatible no-cook snack';
+  const all=noCookLunchCandidates();
+  const choices=all.filter(x=>!blocked.has(String(x).toLowerCase()));
+  const pool=choices.length?choices:all;
+  return pool[dayIndex%Math.max(pool.length,1)]||'Protein shake with a compatible no-cook snack';
 }
+function isNoCookLunch(text){return !!noCookLunchRecord(text);}
 async function setDifferentLunchChoice(day,canPrep){
   const days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay];
   if(!d||!target)return null;
@@ -1007,6 +1031,60 @@ function nextMealAlternative(slot,current){
   const candidates=mealCandidates(slot);
   return candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())||current;
 }
+async function changeWeekMeal(day,slot,current){
+  const days=menu().days,d=days[day];
+  if(!d)return;
+  if(slot==='dinner'){
+    const updatedMenu=JSON.parse(JSON.stringify(menu()));
+    updatedMenu.days[day]={...updatedMenu.days[day],dinner:nextSharedDinner(current)};
+    await saveMenuAndSyncArtifacts(updatedMenu);
+    return;
+  }
+  if(slot==='lunch'){
+    const existing=activeLeftoverLunchOverride(day,myView());
+    if(existing){
+      const noCook=existing.choice==='different-no-cook'||existing.can_prep===false||isNoCookLunch(existing.text);
+      const alternative=noCook?chooseNoCookLunch(day,[current]):freshLunchAlternative(day,[current]);
+      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(day,myView())]:{
+        ...existing,text:alternative,choice:noCook?'different-no-cook':'different-prep',can_prep:!noCook,saved_at:new Date().toISOString()
+      }};
+      await saveSettingAtomic('leftover_lunch_overrides',dedicated);
+      if(day>0){
+        const sourceDay=day-1,plan=leftoverPlanForDay(sourceDay);
+        if(plan){
+          const plans={...leftoverPlans(),[String(sourceDay)]:{...plan,use:false,can_prep:!noCook,target_lunch:alternative,saved_at:new Date().toISOString()}};
+          await saveSettingAtomic('leftover_plans',plans);
+        }
+      }
+      await syncArtifactsFromCurrentPlan();
+      return;
+    }
+  }
+  const key=`${day}-${myView()}-${slot}`,alternative=nextMealAlternative(slot,current);
+  const overrides={...mealOverrides(),[key]:alternative};
+  await saveSettingAtomic('meal_overrides',overrides);
+  await syncArtifactsFromCurrentPlan();
+}
+async function migrateNoCookInventoryV71(){
+  if(personal?.settings?.no_cook_inventory_v71===true)return;
+  let overrides={...leftoverLunchOverrides()},plans={...leftoverPlans()},changed=false;
+  for(const [key,x] of Object.entries(overrides)){
+    if(!x||x.choice!=='different-no-cook'||!/rotisserie chicken/i.test(String(x.text||''))||ingredientAvailable('rotisserie-chicken'))continue;
+    const day=menu().days.findIndex(d=>d.date===x.target_date);
+    if(day<0)continue;
+    const alternative=chooseNoCookLunch(day,[x.text]);
+    overrides[key]={...x,text:alternative,saved_at:new Date().toISOString()};
+    if(day>0&&plans[String(day-1)]?.target_date===x.target_date)plans[String(day-1)]={...plans[String(day-1)],target_lunch:alternative,can_prep:false,saved_at:new Date().toISOString()};
+    changed=true;
+  }
+  if(changed){
+    await saveSettingAtomic('leftover_lunch_overrides',overrides);
+    await saveSettingAtomic('leftover_plans',plans);
+    await syncArtifactsFromCurrentPlan();
+  }
+  await saveSettingAtomic('no_cook_inventory_v71',true);
+}
+
 function personalWorkoutFor(i){
   const goals=workoutGoals(),has=g=>goals.includes(g),sculpt=has('sculpt');
 
@@ -1291,7 +1369,7 @@ async function joinHousehold(){
   }
   await load();await enterApp();
 }
-async function enterApp(){show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
+async function enterApp(){await migrateNoCookInventoryV71();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
 async function subscribe(){
   for(const c of channels)await supabase.removeChannel(c);channels=[];
   if(!profile?.household_id)return;
@@ -1332,18 +1410,21 @@ function groceryPreference(item){
 const GROCERY_TERMS=[
   'green beans','whole grain','orange juice','olive oil','liquid smoke','soy sauce','worcestershire',
   'ground beef','black beans','kidney beans','pumpkin seeds','pepitas','pistachios','parmesan',
-  'salmon','branzino','sea bass','chicken','tilapia','sirloin','flank','sole','catfish','shrimp',
+  'rotisserie chicken','tuna pouch','smoked salmon','salmon','branzino','sea bass','chicken','tilapia','sirloin','flank','sole','catfish','shrimp',
   'beef','hot dog','eggs','egg','swiss','milk','whey','chike','asparagus','broccoli','zucchini',
   'mushrooms','spinach','romaine','cucumber','tomato','peppers','onion','garlic','ginger','lemon',
   'lime','dill','parsley','cilantro','avocado','grapefruit','berries','peas','beans','harissa',
   'butter','capers','bread','bun','rice','potato','nuts','seeds'
 ];
 function groceryTerms(text){
+  const key=inventoryIngredientKey(text),item=key?SYNC_GROCERY_LIBRARY.find(x=>x.key===key):null;
+  if(item)return [...new Set(item.terms||[])];
   const t=normFood(text);
   return [...new Set(GROCERY_TERMS.filter(term=>t.includes(normFood(term))))];
 }
 const SYNC_GROCERY_LIBRARY=[
-  {key:'salmon',category:'Proteins & dairy',label:'Salmon',terms:['salmon']},
+  {key:'smoked-salmon',category:'Proteins & dairy',label:'Smoked salmon (ready-to-eat)',terms:['smoked salmon']},
+  {key:'salmon',category:'Proteins & dairy',label:'Salmon for cooking',terms:['salmon'],exclude_if_terms:['smoked salmon']},
   {key:'cod',category:'Proteins & dairy',label:'Cod',terms:['cod']},
   {key:'tilapia',category:'Proteins & dairy',label:'Tilapia',terms:['tilapia']},
   {key:'sole',category:'Proteins & dairy',label:'Sole',terms:['sole']},
@@ -1351,10 +1432,12 @@ const SYNC_GROCERY_LIBRARY=[
   {key:'sea-bass',category:'Proteins & dairy',label:'Sea bass',terms:['sea bass']},
   {key:'trout',category:'Proteins & dairy',label:'Trout',terms:['trout']},
   {key:'catfish',category:'Proteins & dairy',label:'Catfish',terms:['catfish']},
-  {key:'tuna',category:'Proteins & dairy',label:'Tuna',terms:['tuna']},
+  {key:'tuna-pouch',category:'Proteins & dairy',label:'Tuna pouch (ready-to-eat)',terms:['tuna pouch']},
+  {key:'tuna',category:'Proteins & dairy',label:'Tuna',terms:['tuna'],exclude_if_terms:['tuna pouch']},
   {key:'shrimp',category:'Proteins & dairy',label:'Shrimp',terms:['shrimp','prawns']},
   {key:'generic-fish',category:'Proteins & dairy',label:'Fish (unspecified)',terms:['fish'],exclude_if_terms:['salmon','cod','tilapia','sole','branzino','sea bass','trout','catfish','tuna','shrimp','prawns','shellfish']},
-  {key:'chicken',category:'Proteins & dairy',label:'Chicken',terms:['chicken']},
+  {key:'rotisserie-chicken',category:'Proteins & dairy',label:'Rotisserie chicken (ready-to-eat)',terms:['rotisserie chicken']},
+  {key:'chicken',category:'Proteins & dairy',label:'Chicken breast / chicken for cooking',terms:['chicken'],exclude_if_terms:['rotisserie chicken']},
   {key:'beef',category:'Proteins & dairy',label:'Beef',terms:['beef','steak','sirloin','flank','ground beef']},
   {key:'eggs',category:'Proteins & dairy',label:'Eggs',terms:['egg','eggs','frittata']},
   {key:'swiss',category:'Proteins & dairy',label:'Swiss cheese',terms:['swiss']},
@@ -1890,7 +1973,8 @@ function dayPrepText(d,i,person=myView()){
   const parts=[],personalView=person===myView();
   for(const slot of ['breakfast','lunch','afternoon']){
     const mealText=liveMealTextForPerson(d,slot,i,person);
-    if(mealText)parts.push(prepInstructionForMeal(mealText,slot));
+    const noCook=slot==='lunch'&&personalView&&(activeLeftoverLunchOverride(i,person)?.choice==='different-no-cook'||isNoCookLunch(mealText));
+    if(mealText)parts.push(noCook?`${mealTitle(mealText)}: no cooking required. Pack the ready-to-eat items and keep any dressing separate.`:prepInstructionForMeal(mealText,slot));
     if(personalView){
       const flavor=personalFlavorOverrides()[`${i}-${person}-${slot}`];
       if(flavor?.recipe)parts.push(`${slot[0].toUpperCase()+slot.slice(1)} flavor mix: ${flavor.name} — ${flavor.recipe}.`);
@@ -1947,8 +2031,14 @@ function safeWeekMealText(d,i,k){
   try{return textFor(d,k,i)||rawWeekMealText(d,k);}catch(e){console.error('Week meal render fallback',i,k,e);return rawWeekMealText(d,k);}
 }
 function weekDayCard(d,i){
-  const row=(label,k)=>`<div class="week-meal-row"><b>${label}</b><span>${esc(safeWeekMealText(d,i,k))}</span></div>`;
-  return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,ui.view==='Both'?myView():ui.view))}</div></section>`;
+  const own=ui.view===myView(),person=ui.view==='Both'?myView():ui.view;
+  const row=(label,k)=>{
+    const text=safeWeekMealText(d,i,k),noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
+    const canChange=own&&profileReady();
+    const button=canChange?`<button class="ghost week-change-meal" data-week-change="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">${k==='dinner'?'Change shared dinner':'Change meal'}</button>`:'';
+    return `<div class="week-meal-row editable"><div><b>${label}</b>${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${button}</div>`;
+  };
+  return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
 }
 function renderTrackingMealLog(i,d){
   const labels={breakfast:'Breakfast',lunch:'Lunch',afternoon:'Afternoon',dinner:'Dinner'};
@@ -1967,7 +2057,7 @@ function renderTracking(){
 function renderWeek(){
   const source=Array.isArray(menu()?.days)&&menu().days.length?menu().days:(Array.isArray(DEFAULT_DATA?.days)?DEFAULT_DATA.days:[]);
   const days=source.slice(0,7);
-  return `<div class="card week-summary"><div class="dayhead"><div><h2>Weekly menu</h2><div class="small">${days.length} day${days.length===1?'':'s'} loaded • ${esc(ui.view)} view</div></div><span class="badge ${days.length===7?'ok-badge':'warn-badge'}">${days.length===7?'7 DAYS':'CHECK MENU'}</span></div><p class="small">This view is intentionally menu-only so one calorie, workout, or drink control cannot prevent the rest of the week from displaying.</p></div><div class="weekgrid">${days.map((d,i)=>weekDayCard(d,i)).join('')}</div>`;
+  return `<div class="card week-summary"><div class="dayhead"><div><h2>Weekly menu</h2><div class="small">${days.length} day${days.length===1?'':'s'} loaded • ${esc(ui.view)} view</div></div><span class="badge ${days.length===7?'ok-badge':'warn-badge'}">${days.length===7?'7 DAYS':'CHECK MENU'}</span></div><p class="small">Use <b>Change meal</b> on your own Week view to change any meal. A no-cook lunch stays no-cook when changed. Dinner changes remain shared.</p></div><div class="weekgrid">${days.map((d,i)=>weekDayCard(d,i)).join('')}</div>`;
 }
 function renderPrep(){
   const person=ui.view==='Both'?myView():ui.view,days=(Array.isArray(menu()?.days)?menu().days:[]).slice(0,7);
@@ -2060,7 +2150,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v70<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v71<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2249,6 +2339,15 @@ function bindDynamic(){
         await setDifferentLunchChoice(day,false);
         render();
       }catch(err){if(status)status.textContent='Could not choose a no-cook lunch: '+err.message;}
+      return;
+    }
+    const weekChangeBtn=e.target.closest?.('[data-week-change]');
+    if(weekChangeBtn){
+      e.preventDefault();
+      try{
+        await changeWeekMeal(Number(weekChangeBtn.dataset.weekChange),weekChangeBtn.dataset.weekSlot||'',weekChangeBtn.dataset.weekCurrent||'');
+        render();
+      }catch(err){syncMsg('Meal change failed: '+(err.message||'Unknown error'));}
       return;
     }
     const modeBtn=e.target.closest?.('[data-grocery-mode]');
