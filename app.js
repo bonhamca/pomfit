@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=47';
+import { DEFAULT_DATA } from './data.js?v=48';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=47;
+const APP_VERSION=48;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -259,7 +259,7 @@ function pelotonProgramStatus(p){
   if(!p?.name)return 'Enter a Peloton program name. Recognized Power Zone programs can sync by start date.';
   if(!t)return 'Custom/unrecognized program: PomFit will use the days and key sessions you enter manually.';
   if(!p.start_date)return `Recognized: ${t.label} (${t.weeks} weeks). Add the program start date to synchronize the week-by-week schedule.`;
-  return `Synced preset: ${t.label} • ${t.weeks} weeks • start ${p.start_date}.`;
+  return `PomFit preset: ${t.label} • ${t.weeks} weeks • start ${p.start_date}.`;
 }
 function resistancePrescription(mode='strength'){
   const e=equipmentList(),notes=equipmentNotes();
@@ -365,6 +365,10 @@ function foodCompatibility(food,diet){
   }
   return{status:'yes',message:`“${food}” is compatible with the selected ${diet==='lowcarb'?'low-carb':diet} diet.`};
 }
+function wheyFlavorPlans(){const x=personal?.settings?.whey_flavors_by_meal;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+const DEFAULT_WHEY_FLAVORS=['Chocolate','Vanilla','Mocha','Strawberry','Cookies & Cream','Unflavored'];
+function wheyFlavorForMeal(id){return wheyFlavorPlans()[id]||'';}
+function mealUsesWhey(text){return /\b(whey|protein shake|protein drink)\b/i.test(String(text||''));}
 function workoutChecks(){return personal?.settings?.workout_checks||{};}
 function barkEnabled(){return personal?.settings?.bark_reminder_enabled===true;}
 function barkTime(){return personal?.settings?.bark_reminder_time||'20:00';}
@@ -388,13 +392,25 @@ function drinkMealAdvice(plan){
   const status=over?'This serving is above your selected planning ceiling.':'This serving is within your selected planning ceiling.';
   return `${limitText} ${status} ${adjust} Do not use alcohol calories as a substitute for protein, vegetables, or hydration.`;
 }
+const DRINK_KIND_OPTIONS={
+  cocktail:['Martini','Margarita','Old Fashioned','Manhattan','Mojito','Vodka soda','Gin & tonic'],
+  champagne:['Brut Champagne','Brut sparkling wine','Prosecco','Cava','Rosé sparkling'],
+  wine:['Cabernet Sauvignon','Pinot Noir','Merlot','Chardonnay','Sauvignon Blanc','Dry Rosé'],
+  beer:['Light beer','Lager','Pilsner','IPA','Hazy IPA','Stout'],
+  liquor:['Bourbon','Scotch','Rye','Vodka','Gin','Tequila','Rum']
+};
+function drinkKindOptions(type,current=''){
+  const opts=[...(DRINK_KIND_OPTIONS[type]||[])];
+  if(current&&!opts.includes(current))opts.unshift(current);
+  return opts;
+}
 function renderDrinkPlanner(i){
   const existing=alcoholPlans()[String(i)]||{},type=existing.type||'wine',def=ALCOHOL_DEFAULTS[type]||ALCOHOL_DEFAULTS.wine;
   const amount=existing.amount??def.amount,abv=existing.abv??def.abv,mixer=existing.mixer??def.mixer,cap=existing.cap??alcoholCap(),kind=existing.kind||'',saved=!!existing.saved_at;
   const summary=saved?`${alcoholTypeLabel(type)}${kind?' — '+kind:''}`:'Add a drink',advice=saved?drinkMealAdvice({...existing,cap}):'';
   return `<details class="drink-planner" ${saved?'open':''}><summary>🍷 ${esc(summary)}</summary><div class="drink-grid">
   <label class="small">Type<select class="search" data-drink-type="${i}"><option value="cocktail" ${type==='cocktail'?'selected':''}>Cocktail</option><option value="champagne" ${type==='champagne'?'selected':''}>Champagne / sparkling</option><option value="wine" ${type==='wine'?'selected':''}>Wine</option><option value="beer" ${type==='beer'?'selected':''}>Beer</option><option value="liquor" ${type==='liquor'?'selected':''}>Liquor / spirits</option></select></label>
-  <label class="small">What kind?<input class="search" data-drink-kind="${i}" value="${esc(kind)}" placeholder="e.g. Cabernet, IPA, martini, bourbon"></label>
+  <label class="small">What kind?<select class="search" data-drink-kind="${i}">${drinkKindOptions(type,kind).map(x=>`<option value="${esc(x)}" ${kind===x?'selected':''}>${esc(x)}</option>`).join('')}<option value="Other" ${kind==='Other'?'selected':''}>Other</option></select></label>
   <label class="small">Serving size (oz)<input class="search" type="number" min="0" step=".1" data-drink-amount="${i}" value="${esc(amount)}"></label>
   <label class="small">ABV %<input class="search" type="number" min="0" max="100" step=".1" data-drink-abv="${i}" value="${esc(abv)}"></label>
   <label class="small">Mixer<select class="search" data-drink-mixer="${i}"><option value="none" ${mixer==='none'?'selected':''}>None / not applicable</option><option value="zero" ${mixer==='zero'?'selected':''}>Zero-calorie / soda water</option><option value="regular" ${mixer==='regular'?'selected':''}>Juice / syrup / tonic / sweet mixer</option></select></label>
@@ -406,7 +422,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=47');
+    const audio=new Audio('./Gizmo-bark.mp3?v=48');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -1097,6 +1113,35 @@ function nextFlavorForMeal(text,currentName=''){
   const idx=opts.findIndex(x=>x.name===currentName);
   return opts[(idx+1+opts.length)%opts.length]||opts[0];
 }
+function leftoverPlans(){const x=personal?.settings?.leftover_plans;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function mealProtein(text){
+  const t=String(text||'').toLowerCase();
+  const proteins=['salmon','cod','branzino','sea bass','tilapia','trout','sole','catfish','shrimp','chicken','beef','steak','sirloin','tuna'];
+  return proteins.find(p=>t.includes(p))||'protein';
+}
+function dinnerServingOz(text,person=myView()){
+  const t=String(text||'');
+  const rx=person==='Elizabeth'?/Elizabeth\s*(\d+(?:\.\d+)?)\s*oz/i:/Clark\s*(\d+(?:\.\d+)?)\s*oz/i;
+  const m=t.match(rx);
+  if(m)return Number(m[1]);
+  return person==='Elizabeth'?5:7;
+}
+function lunchReserveOz(person=myView()){return person==='Elizabeth'?4:6;}
+function leftoverLunchText(dinner,person=myView()){
+  const protein=mealProtein(dinner),oz=lunchReserveOz(person);
+  return `LEFTOVER ${protein.toUpperCase()} LUNCH: reserve ${oz} oz cooked ${protein} from dinner. Add salad or available vegetables; keep dressing/sauce separate until eating.`;
+}
+function leftoverPlanForDay(i){return leftoverPlans()[String(i)]||null;}
+function leftoverPlanner(d,i){
+  if(i>=menu().days.length-1||ui.view!==myView()||!profileReady())return '';
+  const plan=leftoverPlanForDay(i),protein=mealProtein(d.dinner),reserve=lunchReserveOz(),dinnerOz=dinnerServingOz(d.dinner),total=dinnerOz+reserve;
+  const status=plan?.use===true
+    ?`Planned: reserve ${reserve} oz cooked ${protein} for tomorrow's lunch. For your dinner + lunch portions, plan about ${total} oz cooked ${protein} total.`
+    :plan?.use===false
+      ?`Tomorrow's lunch will be different; no ${protein} needs to be reserved for you.`
+      :`Will you use this for lunch tomorrow? If yes, reserve ${reserve} oz cooked ${protein}. Your dinner + lunch portions would require about ${total} oz cooked ${protein} total.`;
+  return `<div class="leftover-plan"><b>Tomorrow's lunch</b><p class="small">${esc(status)}</p><div class="meal-actions"><button class="secondary" data-leftover-yes="${i}">Use leftovers</button><button class="ghost" data-leftover-no="${i}">Not enough / different lunch</button></div></div>`;
+}
 function meal(d,i,k,label){
   if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
   const t=textFor(d,k,i);if(!t)return'';
@@ -1108,7 +1153,9 @@ function meal(d,i,k,label){
   const flavor=flavorOverrideFor(d,i,k);
   const flavorBtn=flavors.length?`<button class="ghost flavor-btn" data-flavor-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Different flavor</button>`:'';
   const resetFlavor=flavor?`<button class="ghost flavor-reset-btn" data-reset-flavor="${esc(id)}" data-slot="${esc(k)}">Original flavor</button>`:'';
-  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div></div>`;
+  const whey=mealUsesWhey(t)?`<label class="small whey-choice">Whey flavor <select data-whey-flavor="${esc(id)}" class="search"><option value="">Choose flavor</option>${DEFAULT_WHEY_FLAVORS.map(x=>`<option value="${esc(x)}" ${wheyFlavorForMeal(id)===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`:'';
+  const leftover=k==='dinner'?leftoverPlanner(d,i):'';
+  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div>${leftover}</div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
   const raw=p==='Clark'?d.workout_c:d.workout_e;
@@ -1167,6 +1214,8 @@ function dayPrepText(d,i){
   parts.push(prepInstructionForMeal(d.dinner,'dinner'));
   const dinnerFlavor=flavorOverrideFor(d,i,'dinner');
   if(dinnerFlavor)parts.push(`Flavor mix: ${dinnerFlavor.name} — ${dinnerFlavor.recipe}.`);
+  const lp=leftoverPlanForDay(i);
+  if(lp?.use===true)parts.push(`Reserve ${lunchReserveOz()} oz cooked ${mealProtein(d.dinner)} before serving/adding extra sauce for tomorrow's lunch.`);
   return parts.filter(Boolean).join(' ');
 }
 function generatedPrepTasks(){
@@ -1260,12 +1309,12 @@ function renderProfile(){
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
   <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
   <div class="metric"><b>Resistance equipment available</b><div class="controls">${equip('bowflex','Bowflex / home gym')}${equip('dumbbells','Dumbbells')}${equip('bands','Resistance bands')}${equip('cable','Cable machine')}${equip('barbell','Barbell / rack')}${equip('kettlebell','Kettlebells')}${equip('trx','TRX / suspension trainer')}${equip('bodyweight','Bodyweight only')}</div><label class="small">Device/model or equipment notes <input id="equipmentNotes" class="search" value="${esc(p.equipment_notes||'')}" placeholder="e.g. Bowflex PR3000, adjustable dumbbells to 50 lb"></label></div>
-  <div class="metric"><b>Cardio / smart-training devices</b><p class="small">If a device uses a structured program, enter its program name and start date. Recognized Peloton Power Zone programs sync week-by-week automatically; other devices/programs can still use custom days. Program sessions take priority when PomFit schedules strength, HIIT and recovery.</p><div class="controls">${equip('peloton_bike','Peloton Bike')}${equip('peloton_tread','Peloton Tread')}${equip('peloton_row','Peloton Row')}${equip('tonal','Tonal')}${equip('hydrow','Hydrow')}${equip('ifit','NordicTrack / iFIT')}${equip('concept2','Concept2')}${equip('other_program','Other program/device')}</div><div class="programs-wrap">${programRow('peloton_bike','Peloton Bike')}${programRow('peloton_tread','Peloton Tread')}${programRow('peloton_row','Peloton Row')}${programRow('tonal','Tonal')}${programRow('hydrow','Hydrow')}${programRow('ifit','NordicTrack / iFIT')}${programRow('concept2','Concept2')}${programRow('other_program','Other')}</div></div>
+  <div class="metric"><b>Cardio / smart-training devices</b><p class="small">If a device uses a structured program, enter its program name and start date. Recognized Peloton Power Zone programs use PomFit's built-in week-by-week planning presets from the start date; this is not live Peloton-account sync. Other devices/programs can still use custom days. Program sessions take priority when PomFit schedules strength, HIIT and recovery.</p><div class="controls">${equip('peloton_bike','Peloton Bike')}${equip('peloton_tread','Peloton Tread')}${equip('peloton_row','Peloton Row')}${equip('tonal','Tonal')}${equip('hydrow','Hydrow')}${equip('ifit','NordicTrack / iFIT')}${equip('concept2','Concept2')}${equip('other_program','Other program/device')}</div><div class="programs-wrap">${programRow('peloton_bike','Peloton Bike')}${programRow('peloton_tread','Peloton Tread')}${programRow('peloton_row','Peloton Row')}${programRow('tonal','Tonal')}${programRow('hydrow','Hydrow')}${programRow('ifit','NordicTrack / iFIT')}${programRow('concept2','Concept2')}${programRow('other_program','Other')}</div></div>
   ${mealRow('breakfast','Breakfast / morning')}${mealRow('lunch','Lunch')}${mealRow('afternoon','Afternoon snack')}${mealRow('dinner','Dinner')}
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v47<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v48<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1436,7 +1485,30 @@ function bindDynamic(){
       status.textContent='Save failed: '+e.message;
     }
   };
-  $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
+  $('[data-whey-flavor]').forEach(sel=>sel.onchange=async()=>{
+    const all={...wheyFlavorPlans()};
+    if(sel.value)all[sel.dataset.wheyFlavor]=sel.value;else delete all[sel.dataset.wheyFlavor];
+    await saveSettingAtomic('whey_flavors_by_meal',all);
+  });
+  $('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverYes),d=menu().days[day],nextDay=day+1;
+    const plans={...leftoverPlans(),[String(day)]:{use:true,protein:mealProtein(d.dinner),reserve_oz:lunchReserveOz(),saved_at:new Date().toISOString()}};
+    const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:leftoverLunchText(d.dinner)};
+    await saveSettingAtomic('leftover_plans',plans);
+    await saveSettingAtomic('meal_overrides',overrides);
+    render();
+  });
+  $('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverNo),nextDay=day+1,d=menu().days[nextDay];
+    if(!d)return;
+    const current=textFor(d,'lunch',nextDay),alternative=personalMealReplacement('lunch',current);
+    const plans={...leftoverPlans(),[String(day)]:{use:false,saved_at:new Date().toISOString()}};
+    const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:alternative};
+    await saveSettingAtomic('leftover_plans',plans);
+    await saveSettingAtomic('meal_overrides',overrides);
+    render();
+  });
+  $('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
     const day=Number(id.split('-')[0]);
     const d=menu().days[day],existing=flavorOverrideFor(d,day,slot);
@@ -1508,7 +1580,7 @@ function bindDynamic(){
     const type=$('[data-drink-type="'+i+'"]')?.value||'wine';
     const plan={
       type,
-      kind:$('[data-drink-kind="'+i+'"]')?.value.trim()||'',
+      kind:$('[data-drink-kind="'+i+'"]')?.value||'',
       amount:Number($('[data-drink-amount="'+i+'"]')?.value)||0,
       abv:Number($('[data-drink-abv="'+i+'"]')?.value)||0,
       mixer:$('[data-drink-mixer="'+i+'"]')?.value||'none',
