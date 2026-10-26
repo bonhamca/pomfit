@@ -285,3 +285,5 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .on-hand-entry{display:flex;gap:8px;align-items:center}.on-hand-entry .search{flex:1}.on-hand-entry button{width:auto;margin:0}.grocery-use-btn{width:auto;margin:0}.on-hand-card .small{margin-top:6px}@media(max-width:560px){.on-hand-entry{flex-direction:column;align-items:stretch}.on-hand-entry button{width:100%}}
 
 .meal-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.meal-actions button{width:auto;margin:0}.flavor-note{margin:8px 0;padding:9px 11px;border-radius:12px;background:var(--soft)}.program-sync-status{margin-top:6px;padding:7px 9px;border-radius:10px;background:var(--soft)}
+
+.leftover-plan{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--soft)}.leftover-plan p{margin:6px 0}.whey-choice{display:flex;gap:8px;align-items:center;margin:8px 0}.whey-choice .search{width:auto;min-width:160px}@media(max-width:560px){.whey-choice{align-items:stretch;flex-direction:column}.whey-choice .search{width:100%}}
