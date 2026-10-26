@@ -500,6 +500,7 @@ function collectProfileForm(){
     height_in:height,
     weight_lb:Number($('#profWeight').value)||null,
     goal_weight_lb:Number($('#profGoalWeight')?.value)||null,
+    protein_target_g:Number($('#profProteinTarget')?.value)||null,
     calorie_equation_sex:$('#calorieSex')?.value||'',
     baseline_activity:$('#baselineActivity')?.value||'light',
     goal_rate_lb_week:Number($('#goalRate')?.value)||0,
@@ -1354,8 +1355,8 @@ function meal(d,i,k,label){
   const resetFlavor=flavor?`<button class="ghost flavor-reset-btn" data-reset-flavor="${esc(id)}" data-slot="${esc(k)}">Original flavor</button>`:'';
   const whey=mealUsesWhey(t)?`<label class="small whey-choice">Whey flavor <select data-whey-flavor="${esc(id)}" class="search"><option value="">Choose flavor</option>${DEFAULT_WHEY_FLAVORS.map(x=>`<option value="${esc(x)}" ${wheyFlavorForMeal(id)===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`:'';
   const leftover=k==='dinner'?leftoverPlanner(d,i):'';
-  const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k);
-  const calorieLogger=isMine?`<div class="calorie-log"><label class="small">Calories eaten <input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${esc(k)}" value="${logged??''}" placeholder="~${estimate}"></label><button class="ghost" data-use-meal-calories="${i}" data-meal-slot="${esc(k)}" data-estimate="${estimate}">Use ~${estimate}</button></div>`:'';
+  const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k),proteinEstimate=estimateMealProtein(t),proteinLogged=loggedMealProtein(i,d,k);
+  const calorieLogger=isMine?`<div class="calorie-log"><label class="small">Calories eaten <input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${esc(k)}" value="${logged??''}" placeholder="~${estimate}"></label><button class="ghost" data-use-meal-calories="${i}" data-meal-slot="${esc(k)}" data-estimate="${estimate}">Use ~${estimate}</button><label class="small">Protein (g) <input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${esc(k)}" value="${proteinLogged??''}" placeholder="~${proteinEstimate}"></label><button class="ghost" data-use-meal-protein="${i}" data-meal-slot="${esc(k)}" data-estimate="${proteinEstimate}">Use ~${proteinEstimate} g</button></div>`:'';
   return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div>${leftover}</div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
@@ -1505,7 +1506,7 @@ function renderProfile(){
   const programRow=(k,label)=>{const x=programs[k]||{},peloton=k==='peloton_bike';return `<div class="program-row" data-program-row="${k}"><b>${label} program</b><label class="small">Program / training plan <input id="programName_${k}" class="search" ${peloton?'list="pelotonProgramOptions"':''} value="${esc(x.name||'')}" placeholder="${peloton?'e.g. Discover Your Power Zones':'Program name'}"></label><label class="small">Program start date <input id="programStart_${k}" class="search" type="date" value="${esc(x.start_date||'')}"></label>${peloton?`<datalist id="pelotonProgramOptions"><option value="Discover Your Power Zones"><option value="Build Your Power Zones"><option value="Peak Your Power Zones"><option value="Boost Your Base: Power Zones"></datalist><div class="small program-sync-status">${esc(pelotonProgramStatus(x))}</div>`:''}<label class="small">Custom / usual program days <input id="programDays_${k}" class="search" value="${esc(x.days||'')}" placeholder="Used when PomFit does not recognize the program"></label><label class="small">Key sessions / tests or notes <input id="programSessions_${k}" class="search" value="${esc(x.key_sessions||'')}" placeholder="Optional notes or custom schedule details"></label></div>`;};
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
-  <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label></div>
+  <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label><label class="small">Daily protein target override (g, optional) <input id="profProteinTarget" class="search" type="number" min="40" max="400" step="1" value="${esc(p.protein_target_g??'')}" placeholder="Automatic if blank"></label></div>
   <div class="metric"><b>Calorie target setup</b><label class="small">Calorie-equation sex <select id="calorieSex" class="search"><option value="">Select</option><option value="male" ${p.calorie_equation_sex==='male'?'selected':''}>Male</option><option value="female" ${p.calorie_equation_sex==='female'?'selected':''}>Female</option><option value="neutral" ${p.calorie_equation_sex==='neutral'?'selected':''}>Neutral midpoint estimate</option></select></label><label class="small">Normal daily activity outside workouts <select id="baselineActivity" class="search"><option value="sedentary" ${p.baseline_activity==='sedentary'?'selected':''}>Mostly sitting</option><option value="light" ${(p.baseline_activity||'light')==='light'?'selected':''}>Light movement</option><option value="moderate" ${p.baseline_activity==='moderate'?'selected':''}>Moderately active / on feet</option><option value="active" ${p.baseline_activity==='active'?'selected':''}>Very active outside workouts</option></select></label><label class="small">Desired weight-change pace <select id="goalRate" class="search"><option value="0" ${Number(p.goal_rate_lb_week)===0?'selected':''}>Maintain / no calorie adjustment</option><option value=".25" ${Number(p.goal_rate_lb_week)===.25?'selected':''}>0.25 lb/week</option><option value=".5" ${Number(p.goal_rate_lb_week??.5)===.5?'selected':''}>0.5 lb/week</option><option value="1" ${Number(p.goal_rate_lb_week)===1?'selected':''}>1 lb/week</option></select></label><div class="small">Diet style affects meal choices; calorie target is based on body size, daily activity, goal direction, and workout energy. PomFit floors calculated targets at 1,200 kcal/day and labels them as estimates.</div></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
   <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
@@ -1657,11 +1658,22 @@ function bindDynamic(){
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{}),[slot]:estimate};
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
+  $('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.useMealProtein),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
+    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{}),[slot]:estimate};
+    log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
+    const i=Number(inp.dataset.mealProtein),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
+    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{})};
+    if(val===null)delete protein_meals[slot];else protein_meals[slot]=val;
+    log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-use-workout-calories]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useWorkoutCalories),d=menu().days[i],estimate=Number(btn.dataset.estimate)||0;
@@ -1675,11 +1687,23 @@ function bindDynamic(){
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-save-energy-day]').forEach(btn=>btn.onclick=async()=>{
-    const i=Number(btn.dataset.saveEnergyDay),d=menu().days[i],weight=$('[data-energy-weight="'+i+'"]'),other=$('[data-energy-other="'+i+'"]');
+    const i=Number(btn.dataset.saveEnergyDay),d=menu().days[i],weight=$('[data-energy-weight="'+i+'"]'),other=$('[data-energy-other="'+i+'"]'),otherProtein=$('[data-energy-other-protein="'+i+'"]');
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})};
     const w=Number(weight?.value); if(Number.isFinite(w)&&w>0)day.weight_lb=w;
     const o=Number(other?.value); if(Number.isFinite(o)&&o>=0)day.other_calories=o;
+    const op=Number(otherProtein?.value); if(Number.isFinite(op)&&op>=0)day.other_protein_g=op;
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-log-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.logProteinSupplement),d=menu().days[i],card=btn.closest('.supplement-log');
+    const key=card?.querySelector('[data-protein-product]')?.value||'levels',servings=Math.max(.5,Number(card?.querySelector('[data-protein-servings]')?.value)||1),p=PROTEIN_PRODUCTS[key]||PROTEIN_PRODUCTS.levels;
+    const entry={product:key,label:p.label,servings,scoops:Number((p.serving_scoops*servings).toFixed(1)),protein_g:Math.round(p.protein_g*servings),calories:Math.round(p.calories*servings),caffeine_mg:Math.round(p.caffeine_mg*servings),logged_at:new Date().toISOString()};
+    const log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d),entry];
+    log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-undo-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.undoProteinSupplement),d=menu().days[i],log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d)];
+    supplements.pop(); log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
   });
   if($('#hungerBtn'))$('#hungerBtn').onclick=()=>{
     const a=hungerSuggestions(),box=$('#hungerResult');
