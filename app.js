@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=66;
+const APP_VERSION=67;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -915,6 +915,94 @@ function freshLunchAlternative(dayIndex,avoid=[]){
   if(!candidates.length)return mealCandidates('lunch')[dayIndex%Math.max(mealCandidates('lunch').length,1)]||'Choose a compatible lunch';
   return candidates[dayIndex%candidates.length]||candidates[0];
 }
+const NO_COOK_LUNCHES={
+  balanced:[
+    ['Tuna pouch with cucumber, tomato, whole-grain crackers and fruit',['tuna','cucumber','tomato','whole grain','fruit']],
+    ['Rotisserie chicken with bagged salad, olive oil and fruit',['chicken','salad','olive oil','fruit']],
+    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein']]
+  ],
+  performance:[
+    ['Rotisserie chicken with bagged salad, fruit and whole-grain crackers',['chicken','salad','fruit','whole grain']],
+    ['Tuna pouch with whole-grain crackers, cucumber and fruit',['tuna','whole grain','cucumber','fruit']],
+    ['Greek yogurt, berries, nuts and a ready-to-drink protein shake',['yogurt','berries','nuts','protein']]
+  ],
+  musclegain:[
+    ['Rotisserie chicken with bagged greens, cheese and fruit',['chicken','greens','cheese','fruit']],
+    ['Tuna pouch with Swiss cheese, whole-grain crackers and fruit',['tuna','swiss','whole grain','fruit']],
+    ['Greek yogurt plus a ready-to-drink protein shake, berries and nuts',['yogurt','protein','berries','nuts']]
+  ],
+  mediterranean:[
+    ['Tuna pouch with tomato, cucumber, olives and greens',['tuna','tomato','cucumber','olives','greens']],
+    ['Hummus, cucumber, tomato, whole-grain crackers and Greek yogurt',['hummus','cucumber','tomato','whole grain','yogurt']],
+    ['Greek yogurt with berries and nuts plus fruit',['yogurt','berries','nuts','fruit']]
+  ],
+  lowcarb:[
+    ['Tuna pouch with cucumber, tomato and Swiss cheese',['tuna','cucumber','tomato','swiss']],
+    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado']],
+    ['Smoked salmon with cucumber and Swiss cheese',['salmon','cucumber','swiss']]
+  ],
+  keto:[
+    ['Tuna pouch with avocado, cucumber and olive oil',['tuna','avocado','cucumber','olive oil']],
+    ['Rotisserie chicken with bagged greens and avocado',['chicken','greens','avocado']],
+    ['Smoked salmon with cucumber, Swiss cheese and olive oil',['salmon','cucumber','swiss','olive oil']]
+  ],
+  pescatarian:[
+    ['Tuna pouch with cucumber, tomato and greens',['tuna','cucumber','tomato','greens']],
+    ['Smoked salmon with cucumber, greens and avocado',['salmon','cucumber','greens','avocado']],
+    ['Greek yogurt with berries and pistachios plus a protein drink',['yogurt','berries','pistachios','protein']]
+  ],
+  vegetarian:[
+    ['Greek yogurt with berries, nuts and a protein drink',['yogurt','berries','nuts','protein']],
+    ['Hummus with cucumber, tomato, Swiss cheese and whole-grain crackers',['hummus','cucumber','tomato','swiss','whole grain']],
+    ['Swiss cheese, fruit, pistachios and a protein shake',['swiss','fruit','pistachios','protein']]
+  ]
+};
+function noCookLunchCandidates(){
+  const diet=dietStyle(),dislikes=foodList('food_dislikes'),likes=foodList('food_likes'),unavailable=unavailableTerms();
+  const source=NO_COOK_LUNCHES[diet]||NO_COOK_LUNCHES.balanced;
+  let ranked=source.map((x,idx)=>({
+    text:x[0],tags:x[1],idx,
+    blocked:dislikes.some(d=>x[1].some(t=>t.includes(d)||d.includes(t))),
+    unavailable:unavailable.some(t=>normFood(x[0]).includes(normFood(t))),
+    score:likes.reduce((n,l)=>n+(x[1].some(t=>t.includes(l)||l.includes(t))?2:0),0)
+  }));
+  let usable=ranked.filter(x=>!x.blocked&&!x.unavailable);
+  if(!usable.length)usable=ranked.filter(x=>!x.blocked);
+  if(!usable.length)usable=ranked;
+  usable.sort((a,b)=>b.score-a.score||a.idx-b.idx);
+  return usable.map(x=>x.text);
+}
+function chooseNoCookLunch(dayIndex,avoid=[]){
+  const blocked=new Set(avoid.filter(Boolean).map(x=>String(x).toLowerCase()));
+  const choices=noCookLunchCandidates().filter(x=>!blocked.has(String(x).toLowerCase()));
+  const all=choices.length?choices:noCookLunchCandidates();
+  return all[dayIndex%Math.max(all.length,1)]||'Ready-to-drink protein shake with a compatible no-cook snack';
+}
+async function setDifferentLunchChoice(day,canPrep){
+  const days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay];
+  if(!d||!target)return null;
+  const key=`${nextDay}-${myView()}-lunch`,oldGeneral=mealOverrides()[key],oldDedicated=activeLeftoverLunchOverride(nextDay,myView())?.text;
+  const leftoverText=leftoverLunchText(d.dinner);
+  const alternative=canPrep
+    ?freshLunchAlternative(nextDay,[oldGeneral,oldDedicated,leftoverText])
+    :chooseNoCookLunch(nextDay,[oldGeneral,oldDedicated,leftoverText]);
+  const now=new Date().toISOString();
+  const plans={...leftoverPlans(),[String(day)]:{
+    use:false,can_prep:!!canPrep,source_date:d.date,target_date:target.date,source_dinner:d.dinner,
+    target_lunch:alternative,saved_at:now
+  }};
+  const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(nextDay,myView())]:{
+    text:alternative,choice:canPrep?'different-prep':'different-no-cook',can_prep:!!canPrep,
+    source_date:d.date,target_date:target.date,source_dinner:d.dinner,saved_at:now
+  }};
+  const general={...mealOverrides()};delete general[key];
+  await saveSettingAtomic('leftover_plans',plans);
+  await saveSettingAtomic('meal_overrides',general);
+  await saveSettingAtomic('leftover_lunch_overrides',dedicated);
+  await syncArtifactsFromCurrentPlan();
+  return {alternative,target};
+}
+
 function nextMealAlternative(slot,current){
   const candidates=mealCandidates(slot);
   return candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())||current;
@@ -1716,7 +1804,7 @@ function leftoverPlanner(d,i){
   const status=plan?.use===true
     ?`Tomorrow (${target.date}) is set to: ${targetLunch}. Reserve ${reserve} oz cooked ${protein}; your dinner + lunch portions need about ${total} oz cooked ${protein} total.`
     :plan?.use===false
-      ?`Tomorrow (${target.date}) is set to a different lunch: ${targetLunch}. No ${protein} needs to be reserved for lunch.`
+      ?`Tomorrow (${target.date}) is set to a different lunch: ${targetLunch}.${plan.can_prep===false?' This is a no-cook / ready-to-pack option.':''} No ${protein} needs to be reserved for lunch.`
       :`Will you use tonight's ${protein} for lunch tomorrow (${target.date})? If yes, reserve ${reserve} oz cooked ${protein}. Current tomorrow lunch: ${targetLunch}.`;
   return `<div class="leftover-plan"><b>Tomorrow's lunch</b><p class="small">${esc(status)}</p><div class="meal-actions"><button class="secondary" data-leftover-yes="${i}">Use leftovers tomorrow</button><button class="ghost" data-leftover-no="${i}">Choose a different lunch</button></div><div class="small" data-leftover-status="${i}"></div></div>`;
 }
@@ -1971,7 +2059,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v66<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v67<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2300,24 +2388,28 @@ function bindDynamic(){
       render();
     }catch(e){if(status)status.textContent='Could not update tomorrow’s lunch: '+e.message;}
   });
-  $$('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
-    const day=Number(btn.dataset.leftoverNo),days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay],status=$('[data-leftover-status="'+day+'"]');
-    if(!d||!target)return;
+  $('[data-leftover-no]').forEach(btn=>btn.onclick=()=>{
+    const day=Number(btn.dataset.leftoverNo),status=$('[data-leftover-status="'+day+'"]');
+    if(!status)return;
+    status.innerHTML=`<div class="leftover-prep-question"><b>Can you do meal prep for tomorrow's lunch?</b><div class="meal-actions"><button class="secondary" data-leftover-prep-yes="${day}">Yes, I can prep</button><button class="ghost" data-leftover-prep-no="${day}">No — give me a no-cook lunch</button></div></div>`;
+  });
+  $('[data-leftover-prep-yes]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverPrepYes),status=$('[data-leftover-status="'+day+'"]');
     try{
-      if(status)status.textContent='Choosing a fresh lunch…';
-      const key=`${nextDay}-${myView()}-lunch`,oldGeneral=mealOverrides()[key],oldDedicated=activeLeftoverLunchOverride(nextDay,myView())?.text;
-      const leftoverText=leftoverLunchText(d.dinner);
-      const alternative=freshLunchAlternative(nextDay,[oldGeneral,oldDedicated,leftoverText]);
-      const now=new Date().toISOString();
-      const plans={...leftoverPlans(),[String(day)]:{use:false,source_date:d.date,target_date:target.date,source_dinner:d.dinner,target_lunch:alternative,saved_at:now}};
-      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(nextDay,myView())]:{text:alternative,choice:'different',source_date:d.date,target_date:target.date,source_dinner:d.dinner,saved_at:now}};
-      const general={...mealOverrides()};delete general[key];
-      await saveSettingAtomic('leftover_plans',plans);
-      await saveSettingAtomic('meal_overrides',general);
-      await saveSettingAtomic('leftover_lunch_overrides',dedicated);
-      await syncArtifactsFromCurrentPlan();
+      if(status)status.textContent='Choosing a fresh lunch you can prep…';
+      const result=await setDifferentLunchChoice(day,true);
+      if(status&&result)status.textContent=`Tomorrow's lunch: ${result.alternative}`;
       render();
     }catch(e){if(status)status.textContent='Could not choose a different lunch: '+e.message;}
+  });
+  $('[data-leftover-prep-no]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverPrepNo),status=$('[data-leftover-status="'+day+'"]');
+    try{
+      if(status)status.textContent='Choosing a no-cook lunch…';
+      const result=await setDifferentLunchChoice(day,false);
+      if(status&&result)status.textContent=`No-cook lunch for tomorrow: ${result.alternative}`;
+      render();
+    }catch(e){if(status)status.textContent='Could not choose a no-cook lunch: '+e.message;}
   });
   $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
