@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=65;
+const APP_VERSION=66;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -536,7 +536,24 @@ function resistancePrescription(mode='strength'){
   return `Bodyweight: squats/split squats, hip hinge or bridge, push-ups, supported rows if available, calf raises and core.${suffix}`;
 }
 function strengthSession(label,mode='strength'){return `${label}. ${resistancePrescription(mode)}`;}
-function mealOverrides(){return personal?.settings?.meal_overrides||{};}
+function mealOverrides(){const x=personal?.settings?.meal_overrides;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function leftoverLunchOverrides(){const x=personal?.settings?.leftover_lunch_overrides;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function leftoverTargetKey(dayIndex,person=myView()){
+  const d=menu()?.days?.[dayIndex];
+  return `${person}|${String(d?.date||dayIndex)}`;
+}
+function activeLeftoverLunchOverride(dayIndex,person=myView()){
+  const d=menu()?.days?.[dayIndex],x=leftoverLunchOverrides()[leftoverTargetKey(dayIndex,person)];
+  if(!d||!x||typeof x!=='object'||!x.text)return null;
+  if(x.target_date!==d.date)return null;
+  return x;
+}
+function legacyLeftoverPlanForTarget(dayIndex){
+  if(dayIndex<=0)return null;
+  const p=leftoverPlans()?.[String(dayIndex-1)];
+  if(!p||typeof p!=='object')return null;
+  return (!p.source_date||!p.target_date)?p:null;
+}
 function mealRejections(){const r=personal?.settings?.meal_rejections;return Array.isArray(r)?r:[];}
 function profileHeightParts(){
   const total=Number(personalProfile().height_in)||0;
@@ -879,9 +896,24 @@ function mealCandidates(slot){
   return usable.map(r=>r.x[0]);
 }
 function chooseMeal(slot,dayIndex,key=''){
-  if(key&&mealOverrides()[key])return mealOverrides()[key];
+  if(slot==='lunch'){
+    const leftover=activeLeftoverLunchOverride(dayIndex,myView());
+    if(leftover?.text)return leftover.text;
+    if(!legacyLeftoverPlanForTarget(dayIndex)&&key&&mealOverrides()[key])return mealOverrides()[key];
+  }else if(key&&mealOverrides()[key]){
+    return mealOverrides()[key];
+  }
   const candidates=mealCandidates(slot);
   return candidates[dayIndex%candidates.length]||'Choose a compatible meal';
+}
+function freshLunchAlternative(dayIndex,avoid=[]){
+  const unavailable=unavailableTerms(),blocked=new Set(avoid.filter(Boolean).map(x=>String(x).toLowerCase()));
+  const candidates=mealCandidates('lunch').filter(x=>
+    !blocked.has(String(x).toLowerCase()) &&
+    !unavailable.some(t=>normFood(x).includes(normFood(t)))
+  );
+  if(!candidates.length)return mealCandidates('lunch')[dayIndex%Math.max(mealCandidates('lunch').length,1)]||'Choose a compatible lunch';
+  return candidates[dayIndex%candidates.length]||candidates[0];
 }
 function nextMealAlternative(slot,current){
   const candidates=mealCandidates(slot);
@@ -1669,16 +1701,24 @@ function leftoverLunchText(dinner,person=myView()){
   const protein=mealProtein(dinner),oz=lunchReserveOz(person);
   return `LEFTOVER ${protein.toUpperCase()} LUNCH: reserve ${oz} oz cooked ${protein} from dinner. Add salad or available vegetables; keep dressing/sauce separate until eating.`;
 }
-function leftoverPlanForDay(i){return leftoverPlans()[String(i)]||null;}
+function leftoverPlanForDay(i){
+  const plan=leftoverPlans()[String(i)]||null,d=menu()?.days?.[i],target=menu()?.days?.[i+1];
+  if(!plan||!d||!target)return null;
+  if(plan.source_date!==d.date||plan.target_date!==target.date||plan.source_dinner!==d.dinner)return null;
+  return plan;
+}
 function leftoverPlanner(d,i){
-  if(i>=menu().days.length-1||ui.view!==myView()||!profileReady())return '';
-  const plan=leftoverPlanForDay(i),protein=mealProtein(d.dinner),reserve=lunchReserveOz(),dinnerOz=dinnerServingOz(d.dinner),total=dinnerOz+reserve;
+  const days=menu()?.days||[];
+  if(i>=days.length-1||ui.view!==myView()||!profileReady())return '';
+  const target=days[i+1],plan=leftoverPlanForDay(i),protein=mealProtein(d.dinner),reserve=lunchReserveOz(),dinnerOz=dinnerServingOz(d.dinner),total=dinnerOz+reserve;
+  const targetOverride=activeLeftoverLunchOverride(i+1,myView());
+  const targetLunch=targetOverride?.text||chooseMeal('lunch',i+1,`${i+1}-${myView()}-lunch`);
   const status=plan?.use===true
-    ?`Planned: reserve ${reserve} oz cooked ${protein} for tomorrow's lunch. For your dinner + lunch portions, plan about ${total} oz cooked ${protein} total.`
+    ?`Tomorrow (${target.date}) is set to: ${targetLunch}. Reserve ${reserve} oz cooked ${protein}; your dinner + lunch portions need about ${total} oz cooked ${protein} total.`
     :plan?.use===false
-      ?`Tomorrow's lunch will be different; no ${protein} needs to be reserved for you.`
-      :`Will you use this for lunch tomorrow? If yes, reserve ${reserve} oz cooked ${protein}. Your dinner + lunch portions would require about ${total} oz cooked ${protein} total.`;
-  return `<div class="leftover-plan"><b>Tomorrow's lunch</b><p class="small">${esc(status)}</p><div class="meal-actions"><button class="secondary" data-leftover-yes="${i}">Use leftovers</button><button class="ghost" data-leftover-no="${i}">Not enough / different lunch</button></div></div>`;
+      ?`Tomorrow (${target.date}) is set to a different lunch: ${targetLunch}. No ${protein} needs to be reserved for lunch.`
+      :`Will you use tonight's ${protein} for lunch tomorrow (${target.date})? If yes, reserve ${reserve} oz cooked ${protein}. Current tomorrow lunch: ${targetLunch}.`;
+  return `<div class="leftover-plan"><b>Tomorrow's lunch</b><p class="small">${esc(status)}</p><div class="meal-actions"><button class="secondary" data-leftover-yes="${i}">Use leftovers tomorrow</button><button class="ghost" data-leftover-no="${i}">Choose a different lunch</button></div><div class="small" data-leftover-status="${i}"></div></div>`;
 }
 function meal(d,i,k,label){
   if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
@@ -1931,7 +1971,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v65<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v66<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2244,25 +2284,40 @@ function bindDynamic(){
     if(sel.value)all[sel.dataset.wheyFlavor]=sel.value;else delete all[sel.dataset.wheyFlavor];
     await saveSettingAtomic('whey_flavors_by_meal',all);
   });
-  $$('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
-    const day=Number(btn.dataset.leftoverYes),d=menu().days[day],nextDay=day+1;
-    const plans={...leftoverPlans(),[String(day)]:{use:true,protein:mealProtein(d.dinner),reserve_oz:lunchReserveOz(),saved_at:new Date().toISOString()}};
-    const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:leftoverLunchText(d.dinner)};
-    await saveSettingAtomic('leftover_plans',plans);
-    await saveSettingAtomic('meal_overrides',overrides);
-    await syncArtifactsFromCurrentPlan();
-    render();
+  $('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverYes),days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay],status=$('[data-leftover-status="'+day+'"]');
+    if(!d||!target)return;
+    try{
+      if(status)status.textContent='Updating tomorrow’s lunch…';
+      const lunchText=leftoverLunchText(d.dinner),now=new Date().toISOString();
+      const plans={...leftoverPlans(),[String(day)]:{use:true,source_date:d.date,target_date:target.date,source_dinner:d.dinner,target_lunch:lunchText,protein:mealProtein(d.dinner),reserve_oz:lunchReserveOz(),saved_at:now}};
+      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(nextDay,myView())]:{text:lunchText,choice:'leftovers',source_date:d.date,target_date:target.date,source_dinner:d.dinner,saved_at:now}};
+      const general={...mealOverrides()};delete general[`${nextDay}-${myView()}-lunch`];
+      await saveSettingAtomic('leftover_plans',plans);
+      await saveSettingAtomic('meal_overrides',general);
+      await saveSettingAtomic('leftover_lunch_overrides',dedicated);
+      await syncArtifactsFromCurrentPlan();
+      render();
+    }catch(e){if(status)status.textContent='Could not update tomorrow’s lunch: '+e.message;}
   });
-  $$('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
-    const day=Number(btn.dataset.leftoverNo),nextDay=day+1,d=menu().days[nextDay];
-    if(!d)return;
-    const current=textFor(d,'lunch',nextDay),alternative=personalMealReplacement('lunch',current);
-    const plans={...leftoverPlans(),[String(day)]:{use:false,saved_at:new Date().toISOString()}};
-    const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:alternative};
-    await saveSettingAtomic('leftover_plans',plans);
-    await saveSettingAtomic('meal_overrides',overrides);
-    await syncArtifactsFromCurrentPlan();
-    render();
+  $('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
+    const day=Number(btn.dataset.leftoverNo),days=menu().days,d=days[day],nextDay=day+1,target=days[nextDay],status=$('[data-leftover-status="'+day+'"]');
+    if(!d||!target)return;
+    try{
+      if(status)status.textContent='Choosing a fresh lunch…';
+      const key=`${nextDay}-${myView()}-lunch`,oldGeneral=mealOverrides()[key],oldDedicated=activeLeftoverLunchOverride(nextDay,myView())?.text;
+      const leftoverText=leftoverLunchText(d.dinner);
+      const alternative=freshLunchAlternative(nextDay,[oldGeneral,oldDedicated,leftoverText]);
+      const now=new Date().toISOString();
+      const plans={...leftoverPlans(),[String(day)]:{use:false,source_date:d.date,target_date:target.date,source_dinner:d.dinner,target_lunch:alternative,saved_at:now}};
+      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(nextDay,myView())]:{text:alternative,choice:'different',source_date:d.date,target_date:target.date,source_dinner:d.dinner,saved_at:now}};
+      const general={...mealOverrides()};delete general[key];
+      await saveSettingAtomic('leftover_plans',plans);
+      await saveSettingAtomic('meal_overrides',general);
+      await saveSettingAtomic('leftover_lunch_overrides',dedicated);
+      await syncArtifactsFromCurrentPlan();
+      render();
+    }catch(e){if(status)status.textContent='Could not choose a different lunch: '+e.message;}
   });
   $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
