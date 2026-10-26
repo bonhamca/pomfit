@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=53';
+import { DEFAULT_DATA } from './data.js?v=54';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=53;
+const APP_VERSION=54;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -168,11 +168,20 @@ function workoutCaloriesForTarget(i,d){
   if(actual!==null)return actual;
   return estimateWorkoutCalories(plannedWorkoutFor(myView(),i,d));
 }
+function mealPortionOz(text,person=myView()){
+  const t=String(text||'');
+  const named=t.match(new RegExp(person+'\\s*(\\d+(?:\\.\\d+)?)\\s*oz','i'));
+  if(named)return Number(named[1]);
+  const generic=t.match(/(\d+(?:\.\d+)?)\s*oz(?:\s+cooked)?/i);
+  return generic?Number(generic[1]):null;
+}
 function estimateMealCalories(text){
   const t=String(text||'').toLowerCase();
   if(!t||/\bfast\b/.test(t))return 0;
   let c=0;
-  if(/protein shake|whey|protein drink/.test(t))c+=220;
+  if(/\bchike\b/.test(t))c+=110;
+  else if(/\blevels\b/.test(t))c+=130;
+  else if(/protein shake|whey|protein drink/.test(t))c+=130;
   if(/salmon/.test(t))c+=360;
   else if(/beef|steak|sirloin|flank/.test(t))c+=360;
   else if(/chicken/.test(t))c+=300;
@@ -189,14 +198,49 @@ function estimateMealCalories(text){
   if(/asparagus|broccoli|green beans|zucchini|mushroom|salad|romaine|spinach|vegetable|greens/.test(t))c+=80;
   return Math.max(100,Math.round(c||350));
 }
+function estimateMealProtein(text){
+  const raw=String(text||''),t=raw.toLowerCase();
+  if(!t||/\bfast\b/.test(t))return 0;
+  let g=0;
+  if(/\bchike\b/.test(t))g+=20;
+  else if(/\blevels\b/.test(t))g+=24;
+  else if(/protein shake|whey|protein drink/.test(t))g+=24;
+  if(/salmon|beef|steak|sirloin|flank|chicken|cod|tilapia|sole|branzino|sea bass|catfish|trout|shrimp|tuna/.test(t)){
+    const oz=mealPortionOz(raw);
+    g+=oz?oz*7:28;
+  }
+  const eggs=t.match(/(\d+(?:\.\d+)?)\s*(?:boiled\s+)?eggs?/);
+  if(eggs)g+=Number(eggs[1])*6; else if(/\begg\b/.test(t))g+=6;
+  const cheese=t.match(/(\d+(?:\.\d+)?)\s*oz\s*(?:swiss|cheese|parmesan)/);
+  if(cheese)g+=Number(cheese[1])*7; else if(/swiss|cheese|parmesan/.test(t))g+=7;
+  if(/\bmilk\b/.test(t))g+=8;
+  if(/pistachio|pepita|nuts|seeds/.test(t))g+=6;
+  if(/beans|lentils|chickpeas|hummus/.test(t))g+=7;
+  return Math.max(0,Math.round(g));
+}
 function loggedMealCalories(i,d,k){
   const n=Number(energyDay(i,d)?.meals?.[k]);
   return Number.isFinite(n)&&n>=0?n:null;
 }
+function loggedMealProtein(i,d,k){
+  const n=Number(energyDay(i,d)?.protein_meals?.[k]);
+  return Number.isFinite(n)&&n>=0?n:null;
+}
+function supplementEntries(i,d){
+  const a=energyDay(i,d)?.supplements;
+  return Array.isArray(a)?a:[];
+}
+function supplementCaloriesLogged(i,d){return supplementEntries(i,d).reduce((sum,x)=>sum+(Number(x?.calories)||0),0);}
+function supplementProteinLogged(i,d){return supplementEntries(i,d).reduce((sum,x)=>sum+(Number(x?.protein_g)||0),0);}
 function foodCaloriesLogged(i,d){
   const e=energyDay(i,d),meals=e.meals&&typeof e.meals==='object'?e.meals:{};
   const mealTotal=Object.values(meals).reduce((sum,v)=>sum+(Number(v)||0),0);
-  return mealTotal+(Number(e.other_calories)||0);
+  return mealTotal+(Number(e.other_calories)||0)+supplementCaloriesLogged(i,d);
+}
+function proteinLogged(i,d){
+  const e=energyDay(i,d),meals=e.protein_meals&&typeof e.protein_meals==='object'?e.protein_meals:{};
+  const mealTotal=Object.values(meals).reduce((sum,v)=>sum+(Number(v)||0),0);
+  return Math.round(mealTotal+(Number(e.other_protein_g)||0)+supplementProteinLogged(i,d));
 }
 function calorieTargetForDay(i,d){
   const weight=currentWeightForEnergy(i,d),base=baselineMaintenance(weight);
@@ -210,19 +254,52 @@ function calorieTargetForDay(i,d){
   const target=Math.round(base+workoutCaloriesForTarget(i,d)+adjust);
   return Math.max(1200,target);
 }
+function proteinTargetForDay(i,d){
+  const override=Number(personalProfile().protein_target_g);
+  if(Number.isFinite(override)&&override>=40)return Math.round(override);
+  const weight=currentWeightForEnergy(i,d);
+  if(!weight)return null;
+  const goal=goalWeight(),basis=goal&&goal<weight?goal:weight;
+  const goals=workoutGoals(),highProtein=dietStyle()==='musclegain'||dietStyle()==='performance'||goals.some(x=>['strength','muscle','cycling','running','ski'].includes(x));
+  return Math.max(50,Math.round(basis*(highProtein?0.8:0.7)));
+}
 function energyRemaining(i,d){
   const target=calorieTargetForDay(i,d);
   return target===null?null:Math.round(target-foodCaloriesLogged(i,d));
 }
+function proteinRemaining(i,d){
+  const target=proteinTargetForDay(i,d);
+  return target===null?null:Math.max(0,Math.round(target-proteinLogged(i,d)));
+}
+const PROTEIN_PRODUCTS={
+  levels:{label:'Levels whey',serving_scoops:1,protein_g:24,calories:130,caffeine_mg:0},
+  chike:{label:'Chike Mocha',serving_scoops:2,protein_g:20,calories:110,caffeine_mg:150}
+};
+function proteinSupplementAdvice(i,d){
+  const gap=proteinRemaining(i,d),target=proteinTargetForDay(i,d);
+  if(target===null)return 'Set your weight (or a protein target override) to get a protein recommendation.';
+  if(gap<=5)return 'Protein target is essentially met. No shake is needed just to add more protein.';
+  if(gap<=12)return 'Small gap: about 1/2 scoop Levels (≈12 g) or 1 scoop Chike (≈10 g) would cover most of it.';
+  if(gap<=24)return 'One serving is usually enough: Levels 1 scoop = 24 g protein; Chike 2 scoops = 20 g protein.';
+  return 'Larger gap: use a protein-rich meal plus, if useful, one powder serving. PomFit will not automatically stack multiple shakes.';
+}
+function supplementHistoryHtml(i,d){
+  const entries=supplementEntries(i,d);
+  if(!entries.length)return '';
+  const rows=entries.map(x=>`<span class="supplement-chip">${esc(x.label||'Protein powder')} • ${esc(x.scoops)} scoop${Number(x.scoops)===1?'':'s'} • +${esc(x.protein_g)} g • +${esc(x.calories)} kcal</span>`).join('');
+  return `<div class="supplement-history">${rows}<button class="ghost" data-undo-protein-supplement="${i}">Undo last powder</button></div>`;
+}
 function renderEnergyDashboard(i,d){
   if(ui.view!==myView())return '';
   const p=personalProfile(),target=calorieTargetForDay(i,d),eaten=foodCaloriesLogged(i,d),burn=workoutCaloriesForTarget(i,d),remaining=energyRemaining(i,d);
+  const pTarget=proteinTargetForDay(i,d),pEaten=proteinLogged(i,d),pRemaining=proteinRemaining(i,d);
   const weight=loggedWeightForDay(i,d)??p.weight_lb??'',goal=goalWeight();
-  const ready=target!==null;
-  return `<div class="card energy-card"><div class="dayhead"><div><h3>Energy & weight</h3><div class="small">${goal?`Goal weight: ${esc(goal)} lb`:'Set a goal weight in Profile'} • ${esc(profileSummaryText().diet)}</div></div><span class="badge ${ready?'ok-badge':'warn-badge'}">${ready?'TRACKING':'SETUP'}</span></div>
-    ${ready?`<div class="energy-grid"><div><b>${target}</b><span>calorie target</span></div><div><b>${eaten}</b><span>logged eaten</span></div><div><b>${burn}</b><span>workout burn${loggedWorkoutCalories(i,d)!==null?' actual/logged':' est.'}</span></div><div><b>${remaining}</b><span>remaining</span></div></div>`:`<p class="small">To calculate a target, complete age, height, weight and the calorie-estimate fields in Profile.</p>`}
-    <div class="energy-entry"><label class="small">Today's weight (lb)<input class="search" type="number" step=".1" min="70" max="600" data-energy-weight="${i}" value="${esc(weight)}"></label><label class="small">Other / drink calories<input class="search" type="number" step="1" min="0" data-energy-other="${i}" value="${esc(energyDay(i,d).other_calories??'')}"></label><button class="secondary" data-save-energy-day="${i}">Save daily totals</button></div>
-    <p class="small">Calorie targets and workout burn are estimates. Enter device-reported workout calories and actual food calories when you have them.</p><button class="ghost" id="editEnergyProfileBtn">Edit calorie & weight goals</button></div>`;
+  const ready=target!==null,pReady=pTarget!==null;
+  return `<div class="card energy-card"><div class="dayhead"><div><h3>Calories & protein</h3><div class="small">${goal?`Goal weight: ${esc(goal)} lb`:'Set a goal weight in Profile'} • ${esc(profileSummaryText().diet)}</div></div><span class="badge ${ready&&pReady?'ok-badge':'warn-badge'}">${ready&&pReady?'TRACKING':'SETUP'}</span></div>
+    ${ready?`<div class="energy-grid"><div><b>${target}</b><span>calorie target</span></div><div><b>${eaten}</b><span>calories logged</span></div><div><b>${remaining}</b><span>calories remaining</span></div><div><b>${burn}</b><span>workout burn${loggedWorkoutCalories(i,d)!==null?' actual/logged':' est.'}</span></div>${pReady?`<div><b>${pTarget} g</b><span>protein target</span></div><div><b>${pEaten} g</b><span>protein logged</span></div><div><b>${pRemaining} g</b><span>protein remaining</span></div>`:''}</div>`:`<p class="small">To calculate targets, complete age, height, weight and the calorie-estimate fields in Profile.</p>`}
+    <div class="energy-entry"><label class="small">Today's weight (lb)<input class="search" type="number" step=".1" min="70" max="600" data-energy-weight="${i}" value="${esc(weight)}"></label><label class="small">Other / drink calories<input class="search" type="number" step="1" min="0" data-energy-other="${i}" value="${esc(energyDay(i,d).other_calories??'')}"></label><label class="small">Other protein (g)<input class="search" type="number" step="1" min="0" data-energy-other-protein="${i}" value="${esc(energyDay(i,d).other_protein_g??'')}"></label><button class="secondary" data-save-energy-day="${i}">Save daily totals</button></div>
+    <div class="supplement-log"><div><b>Protein powder quick log</b><div class="small">${esc(proteinSupplementAdvice(i,d))}</div></div><div class="supplement-controls"><label class="small">Powder<select class="search" data-protein-product><option value="levels">Levels whey</option><option value="chike">Chike Mocha</option></select></label><label class="small">Amount<select class="search" data-protein-servings><option value=".5">½ serving</option><option value="1" selected>1 serving</option><option value="1.5">1½ servings</option><option value="2">2 servings</option></select></label><button class="secondary" data-log-protein-supplement="${i}">Log powder</button></div><div class="small">Levels: 1 scoop = 1 serving = 24 g protein (PomFit uses 130 kcal as the powder estimate). Chike Mocha: 2 scoops = 1 serving = 20 g protein, 110 kcal and 150 mg caffeine. Powder only; milk, fruit or other mix-ins are logged separately. Chike is caffeinated, so count it toward your day's caffeine.</div>${supplementHistoryHtml(i,d)}</div>
+    <p class="small">Calorie, protein and workout numbers are estimates unless you enter label/device values. The automatic protein target uses about 0.7 g/lb of target body weight, or 0.8 g/lb for performance/strength-focused profiles; you can override it in Profile.</p><button class="ghost" id="editEnergyProfileBtn">Edit calorie, protein & weight goals</button></div>`;
 }
 function profileSummaryText(){
   const p=personalProfile();
@@ -423,6 +500,7 @@ function collectProfileForm(){
     height_in:height,
     weight_lb:Number($('#profWeight').value)||null,
     goal_weight_lb:Number($('#profGoalWeight')?.value)||null,
+    protein_target_g:Number($('#profProteinTarget')?.value)||null,
     calorie_equation_sex:$('#calorieSex')?.value||'',
     baseline_activity:$('#baselineActivity')?.value||'light',
     goal_rate_lb_week:Number($('#goalRate')?.value)||0,
@@ -544,7 +622,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=53');
+    const audio=new Audio('./Gizmo-bark.mp3?v=54');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -1277,8 +1355,8 @@ function meal(d,i,k,label){
   const resetFlavor=flavor?`<button class="ghost flavor-reset-btn" data-reset-flavor="${esc(id)}" data-slot="${esc(k)}">Original flavor</button>`:'';
   const whey=mealUsesWhey(t)?`<label class="small whey-choice">Whey flavor <select data-whey-flavor="${esc(id)}" class="search"><option value="">Choose flavor</option>${DEFAULT_WHEY_FLAVORS.map(x=>`<option value="${esc(x)}" ${wheyFlavorForMeal(id)===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`:'';
   const leftover=k==='dinner'?leftoverPlanner(d,i):'';
-  const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k);
-  const calorieLogger=isMine?`<div class="calorie-log"><label class="small">Calories eaten <input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${esc(k)}" value="${logged??''}" placeholder="~${estimate}"></label><button class="ghost" data-use-meal-calories="${i}" data-meal-slot="${esc(k)}" data-estimate="${estimate}">Use ~${estimate}</button></div>`:'';
+  const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k),proteinEstimate=estimateMealProtein(t),proteinLogged=loggedMealProtein(i,d,k);
+  const calorieLogger=isMine?`<div class="calorie-log"><label class="small">Calories eaten <input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${esc(k)}" value="${logged??''}" placeholder="~${estimate}"></label><button class="ghost" data-use-meal-calories="${i}" data-meal-slot="${esc(k)}" data-estimate="${estimate}">Use ~${estimate}</button><label class="small">Protein (g) <input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${esc(k)}" value="${proteinLogged??''}" placeholder="~${proteinEstimate}"></label><button class="ghost" data-use-meal-protein="${i}" data-meal-slot="${esc(k)}" data-estimate="${proteinEstimate}">Use ~${proteinEstimate} g</button></div>`:'';
   return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div>${leftover}</div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
@@ -1428,7 +1506,7 @@ function renderProfile(){
   const programRow=(k,label)=>{const x=programs[k]||{},peloton=k==='peloton_bike';return `<div class="program-row" data-program-row="${k}"><b>${label} program</b><label class="small">Program / training plan <input id="programName_${k}" class="search" ${peloton?'list="pelotonProgramOptions"':''} value="${esc(x.name||'')}" placeholder="${peloton?'e.g. Discover Your Power Zones':'Program name'}"></label><label class="small">Program start date <input id="programStart_${k}" class="search" type="date" value="${esc(x.start_date||'')}"></label>${peloton?`<datalist id="pelotonProgramOptions"><option value="Discover Your Power Zones"><option value="Build Your Power Zones"><option value="Peak Your Power Zones"><option value="Boost Your Base: Power Zones"></datalist><div class="small program-sync-status">${esc(pelotonProgramStatus(x))}</div>`:''}<label class="small">Custom / usual program days <input id="programDays_${k}" class="search" value="${esc(x.days||'')}" placeholder="Used when PomFit does not recognize the program"></label><label class="small">Key sessions / tests or notes <input id="programSessions_${k}" class="search" value="${esc(x.key_sessions||'')}" placeholder="Optional notes or custom schedule details"></label></div>`;};
   const mealRow=(key,label)=>{const x=m[key]||{};return `<div class="metric"><b>${label}</b><label class="toggle"><input type="checkbox" data-meal-enabled="${key}" ${x.enabled!==false?'checked':''}> Include</label><label class="small">Time <input type="time" data-meal-time="${key}" value="${esc(x.time||'')}"></label><label class="small">Location <input class="search" data-meal-location="${key}" value="${esc(x.location||'')}" placeholder="Home, work, school…"></label></div>`;};
   return `<div class="card"><h2>My profile</h2><p class="small">Your profile is private and drives your own meal and workout recommendations.</p><div class="account-grid">
-  <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label></div>
+  <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label><label class="small">Daily protein target override (g, optional) <input id="profProteinTarget" class="search" type="number" min="40" max="400" step="1" value="${esc(p.protein_target_g??'')}" placeholder="Automatic if blank"></label></div>
   <div class="metric"><b>Calorie target setup</b><label class="small">Calorie-equation sex <select id="calorieSex" class="search"><option value="">Select</option><option value="male" ${p.calorie_equation_sex==='male'?'selected':''}>Male</option><option value="female" ${p.calorie_equation_sex==='female'?'selected':''}>Female</option><option value="neutral" ${p.calorie_equation_sex==='neutral'?'selected':''}>Neutral midpoint estimate</option></select></label><label class="small">Normal daily activity outside workouts <select id="baselineActivity" class="search"><option value="sedentary" ${p.baseline_activity==='sedentary'?'selected':''}>Mostly sitting</option><option value="light" ${(p.baseline_activity||'light')==='light'?'selected':''}>Light movement</option><option value="moderate" ${p.baseline_activity==='moderate'?'selected':''}>Moderately active / on feet</option><option value="active" ${p.baseline_activity==='active'?'selected':''}>Very active outside workouts</option></select></label><label class="small">Desired weight-change pace <select id="goalRate" class="search"><option value="0" ${Number(p.goal_rate_lb_week)===0?'selected':''}>Maintain / no calorie adjustment</option><option value=".25" ${Number(p.goal_rate_lb_week)===.25?'selected':''}>0.25 lb/week</option><option value=".5" ${Number(p.goal_rate_lb_week??.5)===.5?'selected':''}>0.5 lb/week</option><option value="1" ${Number(p.goal_rate_lb_week)===1?'selected':''}>1 lb/week</option></select></label><div class="small">Diet style affects meal choices; calorie target is based on body size, daily activity, goal direction, and workout energy. PomFit floors calculated targets at 1,200 kcal/day and labels them as estimates.</div></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
   <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="small" style="margin-top:8px"></div></div>
@@ -1441,7 +1519,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v53<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v54<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1580,11 +1658,22 @@ function bindDynamic(){
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{}),[slot]:estimate};
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
+  $('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.useMealProtein),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
+    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{}),[slot]:estimate};
+    log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
+    const i=Number(inp.dataset.mealProtein),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
+    const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{})};
+    if(val===null)delete protein_meals[slot];else protein_meals[slot]=val;
+    log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-use-workout-calories]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useWorkoutCalories),d=menu().days[i],estimate=Number(btn.dataset.estimate)||0;
@@ -1598,11 +1687,23 @@ function bindDynamic(){
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
   });
   $$('[data-save-energy-day]').forEach(btn=>btn.onclick=async()=>{
-    const i=Number(btn.dataset.saveEnergyDay),d=menu().days[i],weight=$('[data-energy-weight="'+i+'"]'),other=$('[data-energy-other="'+i+'"]');
+    const i=Number(btn.dataset.saveEnergyDay),d=menu().days[i],weight=$('[data-energy-weight="'+i+'"]'),other=$('[data-energy-other="'+i+'"]'),otherProtein=$('[data-energy-other-protein="'+i+'"]');
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})};
     const w=Number(weight?.value); if(Number.isFinite(w)&&w>0)day.weight_lb=w;
     const o=Number(other?.value); if(Number.isFinite(o)&&o>=0)day.other_calories=o;
+    const op=Number(otherProtein?.value); if(Number.isFinite(op)&&op>=0)day.other_protein_g=op;
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-log-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.logProteinSupplement),d=menu().days[i],card=btn.closest('.supplement-log');
+    const key=card?.querySelector('[data-protein-product]')?.value||'levels',servings=Math.max(.5,Number(card?.querySelector('[data-protein-servings]')?.value)||1),p=PROTEIN_PRODUCTS[key]||PROTEIN_PRODUCTS.levels;
+    const entry={product:key,label:p.label,servings,scoops:Number((p.serving_scoops*servings).toFixed(1)),protein_g:Math.round(p.protein_g*servings),calories:Math.round(p.calories*servings),caffeine_mg:Math.round(p.caffeine_mg*servings),logged_at:new Date().toISOString()};
+    const log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d),entry];
+    log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
+  });
+  $('[data-undo-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+    const i=Number(btn.dataset.undoProteinSupplement),d=menu().days[i],log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d)];
+    supplements.pop(); log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
   });
   if($('#hungerBtn'))$('#hungerBtn').onclick=()=>{
     const a=hungerSuggestions(),box=$('#hungerResult');
