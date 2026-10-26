@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=51';
+import { DEFAULT_DATA } from './data.js?v=52';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=51;
+const APP_VERSION=52;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -544,7 +544,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=51');
+    const audio=new Audio('./Gizmo-bark.mp3?v=52');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -1441,7 +1441,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v51<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v52<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1575,29 +1575,29 @@ function bindDynamic(){
   $$('[data-equipment]').forEach(cb=>cb.addEventListener('change',syncProgramRows));
   $$('[id^="programName_"],[id^="programStart_"]').forEach(el=>el.addEventListener('change',()=>{profileFormDirty=true;}));
   if($('#editEnergyProfileBtn'))$('#editEnergyProfileBtn').onclick=()=>{profileFormDirty=false;ui.tab='profile';render();};
-  $('[data-use-meal-calories]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-use-meal-calories]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useMealCalories),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{}),[slot]:estimate};
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
+  $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-use-workout-calories]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-use-workout-calories]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useWorkoutCalories),d=menu().days[i],estimate=Number(btn.dataset.estimate)||0;
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{}),workout_calories:estimate};
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-workout-calories]').forEach(inp=>inp.onchange=async()=>{
+  $$('[data-workout-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.workoutCalories),d=menu().days[i],val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})};
     if(val===null)delete day.workout_calories;else day.workout_calories=val;
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-save-energy-day]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-save-energy-day]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.saveEnergyDay),d=menu().days[i],weight=$('[data-energy-weight="'+i+'"]'),other=$('[data-energy-other="'+i+'"]');
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})};
     const w=Number(weight?.value); if(Number.isFinite(w)&&w>0)day.weight_lb=w;
