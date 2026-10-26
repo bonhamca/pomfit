@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=58;
+const APP_VERSION=59;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1259,7 +1259,12 @@ function effectivePlanTexts(menuObj=menu()){
     if(profileReady()){
       for(const slot of ['breakfast','lunch','afternoon']){
         if(!isMealEnabled(slot))continue;
-        try{const t=chooseMeal(slot,i,`${i}-${myView()}-${slot}`);if(t)texts.push(t);}catch{}
+        try{
+          const id=`${i}-${myView()}-${slot}`,t=chooseMeal(slot,i,id);
+          if(t)texts.push(t);
+          const flavor=personalFlavorOverrides()[id];
+          if(flavor?.recipe)texts.push(flavor.recipe);
+        }catch{}
       }
     }
     // Keep baseline household foods represented so syncing one person's profile does not erase the other person's known staples.
@@ -1322,6 +1327,44 @@ async function syncWeeklyPlanFromSelections(statusEl=null){
   if(statusEl){statusEl.textContent=`Synced: ${updatedMenu.days?.length||0} menu days • ${updatedPrep.length} prep tasks • ${updatedGroceries.length} grocery items.`;statusEl.className='small save-ok';}
   return {menu:updatedMenu,prep:updatedPrep,groceries:updatedGroceries};
 }
+async function syncArtifactsFromCurrentPlan(statusEl=null){
+  if(statusEl){statusEl.textContent='Syncing prep and groceries to the current meal plan…';statusEl.className='small';}
+  const currentMenu=JSON.parse(JSON.stringify(menu()));
+  const updatedPrep=synchronizedPrepTasks();
+  const updatedGroceries=generateSyncedGroceries(currentMenu);
+  await saveShared({prep_tasks:updatedPrep,groceries:updatedGroceries});
+  if(statusEl){statusEl.textContent=`Synced current plan: ${updatedPrep.length} prep tasks • ${updatedGroceries.length} grocery items.`;statusEl.className='small save-ok';}
+  return {menu:currentMenu,prep:updatedPrep,groceries:updatedGroceries};
+}
+async function saveMenuAndSyncArtifacts(updatedMenu,statusEl=null){
+  if(statusEl){statusEl.textContent='Syncing changed meal with prep and groceries…';statusEl.className='small';}
+  const priorMenu=shared?.menu;
+  shared={...shared,menu:updatedMenu};
+  const updatedPrep=synchronizedPrepTasks();
+  const updatedGroceries=generateSyncedGroceries(updatedMenu);
+  shared={...shared,menu:priorMenu};
+  await saveShared({menu:updatedMenu,prep_tasks:updatedPrep,groceries:updatedGroceries});
+  if(statusEl){statusEl.textContent=`Meal synced: ${updatedPrep.length} prep tasks • ${updatedGroceries.length} grocery items.`;statusEl.className='small save-ok';}
+  return {menu:updatedMenu,prep:updatedPrep,groceries:updatedGroceries};
+}
+async function resolveUnavailableMealsAndSync(statusEl=null){
+  let affected=[];
+  try{affected=affectedMeals();}catch(e){console.error('Unavailable-meal resolution failed',e);}
+  if(!affected.length)return syncArtifactsFromCurrentPlan(statusEl);
+  const updatedMenu=JSON.parse(JSON.stringify(menu()));
+  const overrides={...mealOverrides()};
+  affected.forEach(a=>{
+    if(a.slot==='dinner'){
+      updatedMenu.days[a.day]={...updatedMenu.days[a.day],dinner:sharedDinnerReplacement(a.text)};
+    }else{
+      const key=`${a.day}-${myView()}-${a.slot}`;
+      overrides[key]=personalMealReplacement(a.slot,a.text);
+    }
+  });
+  await saveSettingAtomic('meal_overrides',overrides);
+  return saveMenuAndSyncArtifacts(updatedMenu,statusEl);
+}
+
 function unavailableTerms(){
   return [...new Set(groceryUnavailable().flatMap(x=>groceryTerms(x.text)))];
 }
@@ -1696,7 +1739,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v58<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v59<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
