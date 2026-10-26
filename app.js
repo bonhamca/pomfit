@@ -1849,7 +1849,11 @@ function bindDynamic(){
   $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
   $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
   $$('[data-prep]').forEach(x=>x.onchange=()=>{saveShared({prep_tasks:prep().map(t=>t.id===x.dataset.prep?{...t,checked:x.checked}:t)});x.nextElementSibling.classList.toggle('done',x.checked);});
-  $$('[data-g]').forEach(x=>x.onchange=async()=>{await saveShared({groceries:groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked,unavailable:x.checked?false:t.unavailable}:t)});render();});
+  $('[data-g]').forEach(x=>x.onchange=async()=>{
+    const updated=groceries().map(t=>t.id===x.dataset.g?{...t,checked:x.checked,unavailable:x.checked?false:t.unavailable}:t);
+    await saveShared({groceries:updated});
+    render();
+  });
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false,unavailable:false}))}).then(render);
   if($('#weeklyGroceryBtn'))$('#weeklyGroceryBtn').onclick=()=>{ui.tab='grocery';groceryMode='needs';render();};
@@ -1876,7 +1880,8 @@ function bindDynamic(){
       updated=[...groceries(),{id,category:'On hand / use this week',text,checked:true,unavailable:false,use_this_week:true,custom:true,added_at:new Date().toISOString()}];
     }
     await saveShared({groceries:updated});
-    if(status)status.textContent='Added as on hand.';
+    if(status)status.textContent='Added as on hand; syncing weekly plan…';
+    await syncArtifactsFromCurrentPlan(status);
     render();
   };
   $$('[data-use-on-hand]').forEach(btn=>btn.onclick=async()=>{
@@ -1887,39 +1892,19 @@ function bindDynamic(){
     const day=nextDinnerDayForOnHand(suggestion);
     const updatedMenu=JSON.parse(JSON.stringify(menu()));
     updatedMenu.days[day]={...updatedMenu.days[day],dinner:suggestion};
-    const priorMenu=shared.menu;
-    shared={...shared,menu:updatedMenu};
-    const updatedPrep=generatedPrepTasks();
-    shared={...shared,menu:priorMenu};
-    await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+    await saveMenuAndSyncArtifacts(updatedMenu);
     render();
   });
   $$('[data-g-unavailable]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.gUnavailable;
     const updated=groceries().map(x=>x.id===id?{...x,unavailable:!x.unavailable,checked:x.unavailable?x.checked:false}:x);
     await saveShared({groceries:updated});
+    await resolveUnavailableMealsAndSync($('#planSyncStatus'));
     render();
   });
   if($('#keepMenuShopBtn'))$('#keepMenuShopBtn').onclick=()=>{groceryMode='needs';render();};
   if($('#changeAffectedMealsBtn'))$('#changeAffectedMealsBtn').onclick=async()=>{
-    const affected=affectedMeals();
-    if(!affected.length)return;
-    const updatedMenu=JSON.parse(JSON.stringify(menu()));
-    const overrides={...mealOverrides()};
-    affected.forEach(a=>{
-      if(a.slot==='dinner'){
-        updatedMenu.days[a.day]={...updatedMenu.days[a.day],dinner:sharedDinnerReplacement(a.text)};
-      }else{
-        const key=`${a.day}-${myView()}-${a.slot}`;
-        overrides[key]=personalMealReplacement(a.slot,a.text);
-      }
-    });
-    const priorMenu=shared.menu;
-    shared={...shared,menu:updatedMenu};
-    const updatedPrep=generatedPrepTasks();
-    shared={...shared,menu:priorMenu};
-    await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
-    if(Object.keys(overrides).length)await savePersonal({settings:{...(personal.settings||{}),meal_overrides:overrides}});
+    await resolveUnavailableMealsAndSync($('#planSyncStatus'));
     render();
   };
   if($('#seasonSearch'))$('#seasonSearch').oninput=e=>$$('#seasonList details').forEach(d=>d.classList.toggle('hidden',!d.dataset.search.includes(e.target.value.toLowerCase())));
@@ -2023,6 +2008,7 @@ function bindDynamic(){
     const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:leftoverLunchText(d.dinner)};
     await saveSettingAtomic('leftover_plans',plans);
     await saveSettingAtomic('meal_overrides',overrides);
+    await syncArtifactsFromCurrentPlan();
     render();
   });
   $$('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
@@ -2033,6 +2019,7 @@ function bindDynamic(){
     const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:alternative};
     await saveSettingAtomic('leftover_plans',plans);
     await saveSettingAtomic('meal_overrides',overrides);
+    await syncArtifactsFromCurrentPlan();
     render();
   });
   $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
@@ -2045,14 +2032,11 @@ function bindDynamic(){
     if(slot==='dinner'){
       const updatedMenu=JSON.parse(JSON.stringify(menu()));
       updatedMenu.days[day]={...updatedMenu.days[day],flavor_override:flavor};
-      const priorMenu=shared.menu;
-      shared={...shared,menu:updatedMenu};
-      const updatedPrep=generatedPrepTasks();
-      shared={...shared,menu:priorMenu};
-      await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+      await saveMenuAndSyncArtifacts(updatedMenu);
     }else{
       const all={...personalFlavorOverrides(),[id]:flavor};
       await saveSettingAtomic('meal_flavors',all);
+      await syncArtifactsFromCurrentPlan();
     }
     render();
   });
@@ -2061,15 +2045,12 @@ function bindDynamic(){
     if(slot==='dinner'){
       const updatedMenu=JSON.parse(JSON.stringify(menu()));
       delete updatedMenu.days[day].flavor_override;
-      const priorMenu=shared.menu;
-      shared={...shared,menu:updatedMenu};
-      const updatedPrep=generatedPrepTasks();
-      shared={...shared,menu:priorMenu};
-      await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+      await saveMenuAndSyncArtifacts(updatedMenu);
     }else{
       const all={...personalFlavorOverrides()};
       delete all[id];
       await saveSettingAtomic('meal_flavors',all);
+      await syncArtifactsFromCurrentPlan();
     }
     render();
   });
@@ -2081,17 +2062,14 @@ function bindDynamic(){
         const next=nextSharedDinner(current);
         const updatedMenu=JSON.parse(JSON.stringify(menu()));
         updatedMenu.days[day]={...updatedMenu.days[day],dinner:next};
-        const previousMenu=shared.menu;
-        shared={...shared,menu:updatedMenu};
-        const updatedPrep=generatedPrepTasks();
-        shared={...shared,menu:previousMenu};
-        await saveShared({menu:updatedMenu,prep_tasks:updatedPrep});
+        await saveMenuAndSyncArtifacts(updatedMenu);
         render();
         return;
       }
       const alternative=nextMealAlternative(slot,current);
       const overrides={...mealOverrides(),[key]:alternative};
-      await savePersonal({settings:{...(personal.settings||{}),meal_overrides:overrides}});
+      await saveSettingAtomic('meal_overrides',overrides);
+      await syncArtifactsFromCurrentPlan();
       render();
     }catch(e){syncMsg('Meal swap failed');}
   });
