@@ -1658,18 +1658,18 @@ function bindDynamic(){
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{}),[slot]:estimate};
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
+  $$('[data-meal-calories]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealCalories),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},meals={...(day.meals||{})};
     if(val===null)delete meals[slot];else meals[slot]=val;
     log[key]={...day,meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-use-meal-protein]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.useMealProtein),d=menu().days[i],slot=btn.dataset.mealSlot,estimate=Number(btn.dataset.estimate)||0;
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{}),[slot]:estimate};
     log[key]={...day,protein_meals}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
+  $$('[data-meal-protein]').forEach(inp=>inp.onchange=async()=>{
     const i=Number(inp.dataset.mealProtein),d=menu().days[i],slot=inp.dataset.mealSlot,val=inp.value===''?null:Math.max(0,Number(inp.value)||0);
     const log={...energyLog()},key=isoDateForDay(i,d),day={...(log[key]||{})},protein_meals={...(day.protein_meals||{})};
     if(val===null)delete protein_meals[slot];else protein_meals[slot]=val;
@@ -1694,14 +1694,14 @@ function bindDynamic(){
     const op=Number(otherProtein?.value); if(Number.isFinite(op)&&op>=0)day.other_protein_g=op;
     log[key]=day; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-log-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-log-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.logProteinSupplement),d=menu().days[i],card=btn.closest('.supplement-log');
     const key=card?.querySelector('[data-protein-product]')?.value||'levels',servings=Math.max(.5,Number(card?.querySelector('[data-protein-servings]')?.value)||1),p=PROTEIN_PRODUCTS[key]||PROTEIN_PRODUCTS.levels;
     const entry={product:key,label:p.label,servings,scoops:Number((p.serving_scoops*servings).toFixed(1)),protein_g:Math.round(p.protein_g*servings),calories:Math.round(p.calories*servings),caffeine_mg:Math.round(p.caffeine_mg*servings),logged_at:new Date().toISOString()};
     const log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d),entry];
     log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
   });
-  $('[data-undo-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-undo-protein-supplement]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.undoProteinSupplement),d=menu().days[i],log={...energyLog()},dateKey=isoDateForDay(i,d),day={...(log[dateKey]||{})},supplements=[...supplementEntries(i,d)];
     supplements.pop(); log[dateKey]={...day,supplements}; await saveSettingAtomic('energy_log',log); render();
   });
