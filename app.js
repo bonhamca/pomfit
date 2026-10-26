@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=73';
+import { DEFAULT_DATA } from './data.js?v=74';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=73;
+const APP_VERSION=74;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -2129,17 +2129,30 @@ function renderWeek(){
   const days=source.slice(0,7);
   return `<div class="card week-summary"><div class="dayhead"><div><h2>Weekly menu</h2><div class="small">${days.length} day${days.length===1?'':'s'} loaded • ${esc(ui.view)} view</div></div><span class="badge ${days.length===7?'ok-badge':'warn-badge'}">${days.length===7?'7 DAYS':'CHECK MENU'}</span></div><p class="small">Use <b>Change meal</b> on your own Week view to change any meal. A no-cook lunch stays no-cook when changed. Dinner changes remain shared.</p></div><div class="weekgrid">${days.map((d,i)=>weekDayCard(d,i)).join('')}</div>`;
 }
+function prepInstructionForLiveMeal(d,i,person,slot,text){
+  if(!text)return '';
+  const personalView=person===myView();
+  const noCook=slot==='lunch'&&personalView&&(activeLeftoverLunchOverride(i,person)?.choice==='different-no-cook'||activeLeftoverLunchOverride(i,person)?.can_prep===false||isNoCookLunch(text));
+  if(noCook)return 'NO COOK: pack the ready-to-eat items. No cooking or advance meal prep required.';
+  return prepInstructionForMeal(text,slot);
+}
 function renderPrep(){
   const person=ui.view==='Both'?myView():ui.view,days=(Array.isArray(menu()?.days)?menu().days:[]).slice(0,7);
   const checked=Object.fromEntries((Array.isArray(shared?.prep_tasks)?shared.prep_tasks:[]).map(x=>[x.id,!!x.checked]));
   const cards=days.map((d,i)=>{
-    const meals=['breakfast','lunch','afternoon','dinner'].map(slot=>({slot,text:liveMealTextForPerson(d,slot,i,person)})).filter(x=>x.text);
-    const mealRows=meals.map(x=>`<div class="prep-meal-row"><b>${x.slot==='breakfast'?'Breakfast':x.slot==='afternoon'?'Afternoon':x.slot[0].toUpperCase()+x.slot.slice(1)}</b><span>${esc(x.text)}</span></div>`).join('');
+    const meals=['breakfast','lunch','afternoon','dinner'].map(slot=>{
+      const text=liveMealTextForPerson(d,slot,i,person);
+      if(!text)return null;
+      const prep=prepInstructionForLiveMeal(d,i,person,slot,text);
+      const noCook=slot==='lunch'&&/^NO COOK:/i.test(prep);
+      return {slot,text,prep,noCook};
+    }).filter(Boolean);
+    const mealRows=meals.map(x=>`<div class="prep-meal-row detailed"><div><b>${x.slot==='breakfast'?'Breakfast':x.slot==='afternoon'?'Afternoon':x.slot[0].toUpperCase()+x.slot.slice(1)}</b>${x.noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><div><div class="prep-meal-name">${esc(x.text)}</div><div class="small prep-meal-instruction"><b>Prep:</b> ${esc(x.prep)}</div></div></div>`).join('');
     const id=`day-prep-${i}`;
-    return `<section class="card prep-live-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="small">Live prep from the current ${esc(person)} meal selections</div></div><input class="check" type="checkbox" data-prep="${id}" ${checked[id]?'checked':''} aria-label="Mark prep complete"></div>${mealRows}<div class="prep-live-text"><b>Prep now:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
+    return `<section class="card prep-live-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="small">Each prep instruction below is generated from the meal shown directly above it.</div></div><input class="check" type="checkbox" data-prep="${id}" ${checked[id]?'checked':''} aria-label="Mark prep complete"></div>${mealRows}</section>`;
   }).join('');
   const generic=generatedPrepTasks().filter(x=>String(x.id).startsWith('prep-')).map(x=>`<li><input type="checkbox" data-prep="${esc(x.id)}" ${x.checked?'checked':''}><label class="${x.checked?'done':''}">${esc(x.text)}</label></li>`).join('');
-  return `<div class="card"><h2>Meal prep</h2><p class="small">This page is rebuilt from the current live meal choices every time it opens. If lunch changes, the lunch shown here and its prep change with it.</p></div>${cards}<div class="card"><h3>General prep</h3><ul class="list">${generic}</ul></div>`;
+  return `<div class="card"><h2>Meal prep</h2><p class="small">Prep is rebuilt from the current live meals every time this page opens. A lunch chosen as no-prep is shown explicitly as <b>NO COOK</b> and will not inherit an older lunch instruction.</p></div>${cards}<div class="card"><h3>General prep</h3><p class="small">These are general household reminders, separate from the meal-specific instructions above.</p><ul class="list">${generic}</ul></div>`;
 }
 function renderGroceryBody(){
   const all=groceryActive().filter(x=>x&&typeof x==='object'&&x.id&&x.text);
@@ -2220,7 +2233,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v73<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v74<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;

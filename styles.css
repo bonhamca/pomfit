@@ -364,3 +364,9 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .week-edit-actions{display:flex;flex-wrap:wrap;gap:6px}
 .tracking-actual-btn{margin-top:7px}
 @media(max-width:720px){.week-edit-actions{width:100%}.week-edit-actions button{width:100%}.week-protein-swaps button{flex:1 1 30%}}
+
+.prep-meal-row.detailed{grid-template-columns:140px minmax(0,1fr);align-items:start}
+.prep-meal-row.detailed>div:first-child{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.prep-meal-name{font-weight:600}
+.prep-meal-instruction{margin-top:5px;line-height:1.45}
+@media(max-width:640px){.prep-meal-row.detailed{grid-template-columns:1fr}}
