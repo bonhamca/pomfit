@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=63;
+const APP_VERSION=64;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1214,19 +1214,34 @@ function groceryTerms(text){
 }
 const SYNC_GROCERY_LIBRARY=[
   {key:'salmon',category:'Proteins & dairy',label:'Salmon',terms:['salmon']},
-  {key:'white-fish',category:'Proteins & dairy',label:'White fish / cod / tilapia / sole',terms:['cod','tilapia','sole','branzino','sea bass','trout','catfish','fish']},
-  {key:'shrimp',category:'Proteins & dairy',label:'Shrimp / shellfish',terms:['shrimp','shellfish']},
+  {key:'cod',category:'Proteins & dairy',label:'Cod',terms:['cod']},
+  {key:'tilapia',category:'Proteins & dairy',label:'Tilapia',terms:['tilapia']},
+  {key:'sole',category:'Proteins & dairy',label:'Sole',terms:['sole']},
+  {key:'branzino',category:'Proteins & dairy',label:'Branzino',terms:['branzino']},
+  {key:'sea-bass',category:'Proteins & dairy',label:'Sea bass',terms:['sea bass']},
+  {key:'trout',category:'Proteins & dairy',label:'Trout',terms:['trout']},
+  {key:'catfish',category:'Proteins & dairy',label:'Catfish',terms:['catfish']},
   {key:'tuna',category:'Proteins & dairy',label:'Tuna',terms:['tuna']},
+  {key:'shrimp',category:'Proteins & dairy',label:'Shrimp',terms:['shrimp','prawns']},
+  {key:'generic-fish',category:'Proteins & dairy',label:'Fish (unspecified)',terms:['fish'],exclude_if_terms:['salmon','cod','tilapia','sole','branzino','sea bass','trout','catfish','tuna','shrimp','prawns','shellfish']},
   {key:'chicken',category:'Proteins & dairy',label:'Chicken',terms:['chicken']},
-  {key:'beef',category:'Proteins & dairy',label:'Lean beef / sirloin',terms:['beef','steak','sirloin','flank','ground beef']},
+  {key:'beef',category:'Proteins & dairy',label:'Beef',terms:['beef','steak','sirloin','flank','ground beef']},
   {key:'eggs',category:'Proteins & dairy',label:'Eggs',terms:['egg','eggs','frittata']},
-  {key:'cheese',category:'Proteins & dairy',label:'Swiss / cheese',terms:['swiss','cheese','parmesan']},
-  {key:'yogurt',category:'Proteins & dairy',label:'Greek yogurt',terms:['greek yogurt','yogurt']},
-  {key:'milk',category:'Proteins & dairy',label:'Milk / unsweetened milk',terms:['milk']},
+  {key:'swiss',category:'Proteins & dairy',label:'Swiss cheese',terms:['swiss']},
+  {key:'parmesan',category:'Proteins & dairy',label:'Parmesan',terms:['parmesan']},
+  {key:'cheese',category:'Proteins & dairy',label:'Cheese (unspecified)',terms:['cheese'],exclude_if_terms:['swiss','parmesan']},
+  {key:'greek-yogurt',category:'Proteins & dairy',label:'Greek yogurt',terms:['greek yogurt']},
+  {key:'yogurt',category:'Proteins & dairy',label:'Yogurt',terms:['yogurt'],exclude_if_terms:['greek yogurt']},
+  {key:'milk',category:'Proteins & dairy',label:'Milk',terms:['milk']},
   {key:'whey',category:'Proteins & dairy',label:'Protein powder / whey',terms:['whey','protein shake','protein drink','protein coffee']},
   {key:'chike',category:'Proteins & dairy',label:'Chike',terms:['chike']},
-  {key:'tofu',category:'Proteins & dairy',label:'Tofu / tempeh',terms:['tofu','tempeh']},
-  {key:'greens',category:'Produce',label:'Greens / spinach / romaine',terms:['greens','spinach','romaine','lettuce','salad']},
+  {key:'tofu',category:'Proteins & dairy',label:'Tofu',terms:['tofu']},
+  {key:'tempeh',category:'Proteins & dairy',label:'Tempeh',terms:['tempeh']},
+
+  {key:'spinach',category:'Produce',label:'Spinach',terms:['spinach']},
+  {key:'romaine',category:'Produce',label:'Romaine',terms:['romaine']},
+  {key:'lettuce',category:'Produce',label:'Lettuce',terms:['lettuce']},
+  {key:'greens',category:'Produce',label:'Greens (unspecified)',terms:['greens','salad'],exclude_if_terms:['spinach','romaine','lettuce']},
   {key:'asparagus',category:'Produce',label:'Asparagus',terms:['asparagus']},
   {key:'broccoli',category:'Produce',label:'Broccoli',terms:['broccoli']},
   {key:'green-beans',category:'Produce',label:'Green beans',terms:['green beans']},
@@ -1234,32 +1249,68 @@ const SYNC_GROCERY_LIBRARY=[
   {key:'mushrooms',category:'Produce',label:'Mushrooms',terms:['mushroom','mushrooms']},
   {key:'cucumber',category:'Produce',label:'Cucumber',terms:['cucumber']},
   {key:'tomatoes',category:'Produce',label:'Tomatoes',terms:['tomato','tomatoes']},
-  {key:'peppers',category:'Produce',label:'Bell peppers / peppers',terms:['peppers','pepper']},
-  {key:'onion',category:'Produce',label:'Onion',terms:['onion']},
+  {key:'peppers',category:'Produce',label:'Bell peppers / peppers',terms:['bell peppers','peppers','pepper']},
+  {key:'onion',category:'Produce',label:'Onion',terms:['onion','onions']},
   {key:'garlic',category:'Produce',label:'Garlic',terms:['garlic']},
   {key:'ginger',category:'Produce',label:'Fresh ginger',terms:['ginger']},
-  {key:'lemon',category:'Produce',label:'Lemons',terms:['lemon']},
-  {key:'lime',category:'Produce',label:'Limes',terms:['lime']},
-  {key:'avocado',category:'Produce',label:'Avocado',terms:['avocado']},
+  {key:'lemon',category:'Produce',label:'Lemons',terms:['lemon','lemons']},
+  {key:'lime',category:'Produce',label:'Limes',terms:['lime','limes']},
+  {key:'avocado',category:'Produce',label:'Avocado',terms:['avocado','avocados']},
   {key:'berries',category:'Produce',label:'Berries',terms:['berries','berry']},
-  {key:'fruit',category:'Produce',label:'Fruit',terms:['fruit','banana','apple','orange','grapefruit']},
+  {key:'grapefruit',category:'Produce',label:'Grapefruit',terms:['grapefruit']},
+  {key:'banana',category:'Produce',label:'Bananas',terms:['banana','bananas']},
+  {key:'apple',category:'Produce',label:'Apples',terms:['apple','apples']},
+  {key:'orange',category:'Produce',label:'Oranges',terms:['orange','oranges'],exclude_if_terms:['orange juice']},
+  {key:'fruit',category:'Produce',label:'Fruit (unspecified)',terms:['fruit'],exclude_if_terms:['berries','berry','grapefruit','banana','apple','orange']},
   {key:'peas',category:'Produce',label:'Peas',terms:['peas']},
-  {key:'beans',category:'Pantry / grains',label:'Beans / chickpeas',terms:['beans','bean','chickpeas']},
+
+  {key:'black-beans',category:'Pantry / grains',label:'Black beans',terms:['black beans']},
+  {key:'kidney-beans',category:'Pantry / grains',label:'Kidney beans',terms:['kidney beans']},
+  {key:'chickpeas',category:'Pantry / grains',label:'Chickpeas',terms:['chickpeas']},
+  {key:'beans',category:'Pantry / grains',label:'Beans (unspecified)',terms:['beans','bean'],exclude_if_terms:['black beans','kidney beans','chickpeas']},
   {key:'lentils',category:'Pantry / grains',label:'Lentils',terms:['lentils','lentil']},
   {key:'hummus',category:'Pantry / grains',label:'Hummus',terms:['hummus']},
-  {key:'whole-grain',category:'Pantry / grains',label:'Whole-grain bread / grain',terms:['whole grain','whole-grain','bread','toast','crackers']},
+  {key:'whole-grain-bread',category:'Pantry / grains',label:'Whole-grain bread',terms:['whole-grain bread','whole grain bread','toast']},
+  {key:'crackers',category:'Pantry / grains',label:'Crackers',terms:['cracker','crackers']},
+  {key:'whole-grain',category:'Pantry / grains',label:'Whole grain (unspecified)',terms:['whole grain','whole-grain'],exclude_if_terms:['whole-grain bread','whole grain bread','toast','cracker','crackers']},
   {key:'rice',category:'Pantry / grains',label:'Rice',terms:['rice']},
   {key:'potato',category:'Pantry / grains',label:'Potatoes',terms:['potato','potatoes']},
   {key:'oats',category:'Pantry / grains',label:'Oats / oatmeal',terms:['oats','oatmeal']},
+
   {key:'olive-oil',category:'Pantry / seasonings',label:'Olive oil',terms:['olive oil']},
-  {key:'nuts',category:'Pantry / seasonings',label:'Nuts / pistachios / walnuts',terms:['nuts','pistachios','walnuts','almonds']},
-  {key:'seeds',category:'Pantry / seasonings',label:'Pepitas / seeds',terms:['pepitas','seeds','pumpkin seeds']},
+  {key:'pistachios',category:'Pantry / seasonings',label:'Pistachios',terms:['pistachios','pistachio']},
+  {key:'walnuts',category:'Pantry / seasonings',label:'Walnuts',terms:['walnuts','walnut']},
+  {key:'almonds',category:'Pantry / seasonings',label:'Almonds',terms:['almonds','almond']},
+  {key:'nuts',category:'Pantry / seasonings',label:'Nuts (unspecified)',terms:['nuts'],exclude_if_terms:['pistachios','pistachio','walnuts','walnut','almonds','almond']},
+  {key:'pepitas',category:'Pantry / seasonings',label:'Pepitas',terms:['pepitas']},
+  {key:'pumpkin-seeds',category:'Pantry / seasonings',label:'Pumpkin seeds',terms:['pumpkin seeds']},
+  {key:'seeds',category:'Pantry / seasonings',label:'Seeds (unspecified)',terms:['seeds'],exclude_if_terms:['pepitas','pumpkin seeds']},
   {key:'soy',category:'Pantry / seasonings',label:'Low-sodium soy sauce',terms:['soy sauce','soy-ginger']},
   {key:'harissa',category:'Pantry / seasonings',label:'Harissa',terms:['harissa']},
   {key:'worcestershire',category:'Pantry / seasonings',label:'Worcestershire sauce',terms:['worcestershire']},
   {key:'butter',category:'Pantry / seasonings',label:'Butter',terms:['butter']},
-  {key:'capers',category:'Pantry / seasonings',label:'Capers',terms:['capers']}
+  {key:'capers',category:'Pantry / seasonings',label:'Capers',terms:['capers']},
+  {key:'orange-juice',category:'Drinks & optional carbs',label:'Orange juice',terms:['orange juice']}
 ];
+function textHasIngredientTerm(text,term){
+  const t=' '+normFood(text)+' ',q=' '+normFood(term)+' ';
+  return !!q.trim()&&t.includes(q);
+}
+function groceryLibraryItemForText(text){
+  return SYNC_GROCERY_LIBRARY.filter(item=>{
+    const hit=(item.terms||[]).some(term=>textHasIngredientTerm(text,term));
+    const excluded=(item.exclude_if_terms||[]).some(term=>textHasIngredientTerm(text,term));
+    return hit&&!excluded;
+  });
+}
+function inventoryIngredientKey(text){
+  const raw=String(text||'').split('•')[0].trim();
+  const exactLabel=SYNC_GROCERY_LIBRARY.find(item=>normFood(item.label)===normFood(raw));
+  if(exactLabel)return exactLabel.key;
+  const matches=groceryLibraryItemForText(raw);
+  if(matches.length===1)return matches[0].key;
+  return matches.find(item=>(item.terms||[]).some(term=>normFood(term)===normFood(raw)))?.key||null;
+}
 const VEGETARIAN_SHARED_DINNERS=[
   'MEDITERRANEAN LENTIL BOWL: lentils with spinach, tomato, cucumber and olive oil. Optional whole grain on the side.',
   'VEGETABLE FRITTATA: eggs with spinach, mushrooms, tomato and Swiss cheese. Side salad with olive oil.'
@@ -1327,25 +1378,38 @@ function effectivePlanTexts(menuObj=menu()){
 }
 function groceryMatchCount(texts,item){
   return texts.reduce((n,text)=>{
-    const t=normFood(text);
-    return n+(item.terms.some(term=>t.includes(normFood(term)))?1:0);
+    const hit=(item.terms||[]).some(term=>textHasIngredientTerm(text,term));
+    const excluded=(item.exclude_if_terms||[]).some(term=>textHasIngredientTerm(text,term));
+    return n+(hit&&!excluded?1:0);
   },0);
 }
 function generateSyncedGroceries(menuObj=menu()){
   const texts=effectivePlanTexts(menuObj);
   const old=Array.isArray(shared?.groceries)?shared.groceries:[];
   const oldById=new Map(old.filter(Boolean).map(x=>[x.id,x]));
+  const onHandByKey=new Map();
+  for(const x of old.filter(x=>x?.custom||x?.use_this_week)){
+    const key=x.ingredient_key||inventoryIngredientKey(x.text);
+    if(key&&!onHandByKey.has(key))onHandByKey.set(key,x);
+  }
   const generated=SYNC_GROCERY_LIBRARY.map(item=>({...item,count:groceryMatchCount(texts,item)}))
     .filter(item=>item.count>0)
     .map(item=>{
-      const id=`sync-${item.key}`,prior=oldById.get(id)||old.find(x=>normFood(x?.text).includes(normFood(item.label.split(' / ')[0])));
+      const id=`sync-${item.key}`,prior=oldById.get(id),onHand=onHandByKey.get(item.key);
       return {
-        id,category:item.category,
+        id,ingredient_key:item.key,category:item.category,
         text:`${item.label} • ${item.count} planned use${item.count===1?'':'s'}`,
-        checked:!!prior?.checked,unavailable:!!prior?.unavailable,synced:true
+        checked:!!(prior?.checked||onHand?.checked||onHand?.use_this_week),
+        unavailable:!!prior?.unavailable,
+        use_this_week:!!onHand?.use_this_week,
+        synced:true
       };
     });
-  const custom=old.filter(x=>x?.custom||x?.use_this_week).map(x=>({...x}));
+  const generatedKeys=new Set(generated.map(x=>x.ingredient_key));
+  const custom=old.filter(x=>x?.custom||x?.use_this_week).map(x=>{
+    const key=x.ingredient_key||inventoryIngredientKey(x.text);
+    return {...x,ingredient_key:key||null};
+  }).filter(x=>!x.ingredient_key||!generatedKeys.has(x.ingredient_key));
   const seen=new Set(generated.map(x=>x.id));
   for(const x of custom)if(!seen.has(x.id)){generated.push(x);seen.add(x.id);}
   return generated;
@@ -1465,13 +1529,12 @@ function grocerySummary(){
   return {total,checked,unchecked:groceryUnchecked().length,unavailable:groceryUnavailable().length};
 }
 function menuSuggestionForOnHand(item){
-  const text=String(item?.text||'').trim();
+  const text=String(item?.text||'').split('•')[0].trim();
   if(!text)return null;
-  const terms=groceryTerms(text);
-  let choices=sharedDinnerAlternatives().filter(x=>{
-    const nx=normFood(x);
-    return terms.some(t=>nx.includes(normFood(t))) || nx.includes(normFood(text));
-  });
+  const ingredientKey=item?.ingredient_key||inventoryIngredientKey(text);
+  const libraryItem=SYNC_GROCERY_LIBRARY.find(x=>x.key===ingredientKey);
+  const terms=libraryItem?.terms||groceryTerms(text);
+  let choices=sharedDinnerAlternatives().filter(x=>terms.some(t=>textHasIngredientTerm(x,t)));
   if(!choices.length)return null;
   const dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
   const clean=choices.filter(x=>!dislikes.some(d=>prefMatchesText(d,x)));
@@ -1484,11 +1547,10 @@ function menuSuggestionForOnHand(item){
   return choices[0]||null;
 }
 function onHandUsedInMenu(item){
-  const text=String(item?.text||'').trim(),terms=groceryTerms(text);
-  return menu().days.some(d=>{
-    const nx=normFood(d.dinner);
-    return nx.includes(normFood(text))||terms.some(t=>nx.includes(normFood(t)));
-  });
+  const text=String(item?.text||'').split('•')[0].trim(),ingredientKey=item?.ingredient_key||inventoryIngredientKey(text);
+  const libraryItem=SYNC_GROCERY_LIBRARY.find(x=>x.key===ingredientKey);
+  const terms=libraryItem?.terms||groceryTerms(text);
+  return menu().days.some(d=>terms.some(t=>textHasIngredientTerm(d?.dinner||'',t)));
 }
 function nextDinnerDayForOnHand(suggestion){
   const start=todayIndex(),days=menu().days;
@@ -1812,7 +1874,7 @@ function renderProfile(){
   <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" data-profile-autosave class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label><label class="small">Daily protein target override (g, optional) <input id="profProteinTarget" data-profile-autosave class="search" type="number" min="40" max="400" step="1" value="${esc(p.protein_target_g??'')}" placeholder="Automatic if blank"></label><div id="profileAutosaveStatus" class="small profile-autosave-status">Goal and calorie-target fields save automatically when changed.</div></div>
   <div class="metric"><b>Calorie target setup</b><label class="small">Calorie-equation sex <select id="calorieSex" data-profile-autosave class="search"><option value="">Select</option><option value="male" ${p.calorie_equation_sex==='male'?'selected':''}>Male</option><option value="female" ${p.calorie_equation_sex==='female'?'selected':''}>Female</option><option value="neutral" ${p.calorie_equation_sex==='neutral'?'selected':''}>Neutral midpoint estimate</option></select></label><label class="small">Normal daily activity outside workouts <select id="baselineActivity" data-profile-autosave class="search"><option value="sedentary" ${p.baseline_activity==='sedentary'?'selected':''}>Mostly sitting</option><option value="light" ${(p.baseline_activity||'light')==='light'?'selected':''}>Light movement</option><option value="moderate" ${p.baseline_activity==='moderate'?'selected':''}>Moderately active / on feet</option><option value="active" ${p.baseline_activity==='active'?'selected':''}>Very active outside workouts</option></select></label><label class="small">Desired weight-change pace <select id="goalRate" data-profile-autosave class="search"><option value="0" ${Number(p.goal_rate_lb_week)===0?'selected':''}>Maintain / no calorie adjustment</option><option value=".25" ${Number(p.goal_rate_lb_week)===.25?'selected':''}>0.25 lb/week</option><option value=".5" ${Number(p.goal_rate_lb_week??.5)===.5?'selected':''}>0.5 lb/week</option><option value="1" ${Number(p.goal_rate_lb_week)===1?'selected':''}>1 lb/week</option></select></label><div class="small">Diet style affects meal choices; calorie target is based on body size, daily activity, goal direction, and workout energy. PomFit floors calculated targets at 1,200 kcal/day and labels them as estimates.</div></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
-  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check or add a food</div><input id="foodQuery" class="search" list="foodQueryOptions" placeholder="e.g. sweet potato, shrimp, oatmeal"><datalist id="foodQueryOptions">${[...new Set(Object.values(FOOD_GROUPS).flat())].sort().map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="food-check-actions"><button class="secondary" id="checkFoodBtn">Check food</button><button class="primary" id="addFoodLikeBtn">Add to Foods I like</button></div><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div><div class="small"><b>What these fields do:</b> Foods I like are ranked higher when PomFit generates or swaps meals. Foods I don’t like are filtered out when possible. These are planning preferences only—they do not record what you ate or add calories. Checking tells you whether a food fits the selected diet; adding saves the preference.</div></div>
+  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check or add a food</div><input id="foodQuery" class="search" list="foodQueryOptions" placeholder="e.g. sweet potato, shrimp, oatmeal"><datalist id="foodQueryOptions">${[...new Set(Object.values(FOOD_GROUPS).flat())].sort().map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="food-check-actions"><button class="secondary" id="checkFoodBtn">Check food</button></div><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div><div class="small"><b>What these fields do:</b> Foods I like are ranked higher when PomFit generates or swaps meals. Foods I don’t like are filtered out when possible. These are planning preferences only—they do not record what you ate or add calories. Checking tells you whether a food fits the selected diet; adding saves the preference.</div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
   <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
@@ -1822,7 +1884,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v63<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v64<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1889,7 +1951,7 @@ function showFoodCheckResult(food,diet){
   const result=foodCompatibility(food,diet);
   const labels={yes:'✓ FITS DIET',limited:'△ LIMITED',no:'✕ DOES NOT FIT CURRENT DIET',unknown:'? NOT YET CATEGORIZED'};
   out.className='food-check-result status-'+result.status;
-  out.innerHTML=`<b>${esc(labels[result.status]||'CHECK')}</b><span>${esc(result.message)}</span>`;
+  out.innerHTML=`<b>${esc(labels[result.status]||'CHECK')}</b><span>${esc(result.message)}</span><div class="food-check-followup"><span>Do you want to add this to Foods I like?</span><button class="primary" data-add-checked-food="${esc(food)}">Add to Foods I like</button></div>`;
   return result;
 }
 function checkFoodOnly(){
@@ -1897,10 +1959,10 @@ function checkFoodOnly(){
   if(!input||!dietEl)return;
   showFoodCheckResult(String(input.value||'').trim(),dietEl.value);
 }
-async function addFoodToLikes(){
+async function addFoodToLikes(foodOverride=''){
   const input=$('#foodQuery'),dietEl=$('#dietStyle'),out=$('#foodQueryResult'),likesEl=$('#foodLikes');
   if(!input||!dietEl||!out||!likesEl)return;
-  const food=String(input.value||'').trim(),diet=dietEl.value;
+  const food=String(foodOverride||input.value||'').trim(),diet=dietEl.value;
   if(!food){showFoodCheckResult('',diet);return;}
   const result=showFoodCheckResult(food,diet)||{status:'unknown',message:''};
   const existing=likesEl.value.split(',').map(x=>x.trim()).filter(Boolean);
@@ -1953,6 +2015,12 @@ async function saveShared(patch){
 let noteTimer;
 function bindDynamic(){
   if($('#content'))$('#content').onclick=e=>{
+    const addCheckedFoodBtn=e.target.closest?.('[data-add-checked-food]');
+    if(addCheckedFoodBtn){
+      e.preventDefault();
+      addFoodToLikes(addCheckedFoodBtn.dataset.addCheckedFood||'');
+      return;
+    }
     const modeBtn=e.target.closest?.('[data-grocery-mode]');
     if(modeBtn){
       e.preventDefault();
@@ -1993,13 +2061,16 @@ function bindDynamic(){
     const input=$('#onHandGroceryInput'),status=$('#onHandGroceryStatus');
     const text=String(input?.value||'').trim();
     if(!text){if(status)status.textContent='Enter a grocery or ingredient first.';return;}
-    const existing=groceries().find(x=>normFood(x.text).includes(normFood(text))||normFood(text).includes(normFood(x.text)));
+    const ingredientKey=inventoryIngredientKey(text);
+    const existing=ingredientKey
+      ?groceries().find(x=>(x.ingredient_key||inventoryIngredientKey(x.text))===ingredientKey)
+      :groceries().find(x=>normFood(String(x.text||'').split('•')[0])===normFood(text));
     let updated;
     if(existing){
-      updated=groceries().map(x=>x.id===existing.id?{...x,checked:true,unavailable:false,use_this_week:true}:x);
+      updated=groceries().map(x=>x.id===existing.id?{...x,ingredient_key:ingredientKey||x.ingredient_key||null,checked:true,unavailable:false,use_this_week:true}:x);
     }else{
       const id='onhand-'+Date.now().toString(36);
-      updated=[...groceries(),{id,category:'On hand / use this week',text,checked:true,unavailable:false,use_this_week:true,custom:true,added_at:new Date().toISOString()}];
+      updated=[...groceries(),{id,ingredient_key:ingredientKey||null,category:'On hand / use this week',text,checked:true,unavailable:false,use_this_week:true,custom:true,added_at:new Date().toISOString()}];
     }
     await saveShared({groceries:updated});
     if(status)status.textContent='Added as on hand; syncing weekly plan…';
@@ -2101,7 +2172,6 @@ function bindDynamic(){
   if($('#editProfileBtn'))$('#editProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#todayProfileBtn'))$('#todayProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=()=>checkFoodOnly();
-  if($('#addFoodLikeBtn'))$('#addFoodLikeBtn').onclick=()=>addFoodToLikes();
   if($('#foodQuery'))$('#foodQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();checkFoodOnly();}};
   $$('[data-profile-autosave]').forEach(el=>el.onchange=async()=>{
     const status=$('#profileAutosaveStatus');
