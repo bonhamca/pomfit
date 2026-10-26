@@ -325,3 +325,14 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .food-check-followup{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
 .food-check-followup button{width:auto}
 @media(max-width:640px){.food-check-followup{align-items:stretch;flex-direction:column}.food-check-followup button{width:100%}}
+
+.prep-live-card .prep-meal-row,.tracking-meal-row{display:grid;grid-template-columns:140px 1fr;gap:10px;padding:9px 0;border-top:1px solid rgba(0,0,0,.07)}
+.prep-live-card .prep-meal-row:first-of-type,.tracking-meal-row:first-of-type{border-top:0}
+.prep-live-text{margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,.08)}
+.tracking-entry{display:grid;grid-template-columns:minmax(110px,1fr) auto minmax(110px,1fr) auto;gap:8px;align-items:end}
+.tracking-jump button{width:auto}
+@media(max-width:760px){
+  .prep-live-card .prep-meal-row,.tracking-meal-row{grid-template-columns:1fr;gap:4px}
+  .tracking-entry{grid-template-columns:1fr 1fr}
+}
+@media(max-width:520px){.tracking-entry{grid-template-columns:1fr}.tracking-entry button,.tracking-jump button{width:100%}}

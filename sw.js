@@ -1,12 +1,12 @@
-const CACHE='pomfit-v64';
+const CACHE='pomfit-v65';
 const CORE=[
-  './?v=64',
-  './styles.css?v=64',
-  './app.js?v=64',
-  './data.js?v=64',
+  './?v=65',
+  './styles.css?v=65',
+  './app.js?v=65',
+  './data.js?v=65',
   './manifest.webmanifest',
   './icon.svg',
-  './Gizmo-bark.mp3?v=64'
+  './Gizmo-bark.mp3?v=65'
 ];
 
 self.addEventListener('install',event=>{
@@ -46,7 +46,7 @@ self.addEventListener('fetch',event=>{
         return resp;
       }catch{
         return (await caches.match(req))
-          || (await caches.match('./?v=64'))
+          || (await caches.match('./?v=65'))
           || new Response('PomFit is temporarily offline. Reopen when connected.',{
             status:503,
             headers:{'Content-Type':'text/plain'}
