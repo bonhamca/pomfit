@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=81';
+import { DEFAULT_DATA } from './data.js?v=82';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=81;
+const APP_VERSION=82;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1009,8 +1009,10 @@ function chooseMeal(slot,dayIndex,key=''){
     if(personLunch&&personalMealAllowed(personLunch))return personLunch;
     const sharedLunch=d?.lunch||'';
     if(sharedLunch&&personalMealAllowed(sharedLunch))return sharedLunch;
-  }else if(key&&mealOverrides()[key]&&personalMealAllowed(mealOverrides()[key])){
-    return mealOverrides()[key];
+  }else{
+    const d=menu()?.days?.[dayIndex],sharedPlanned=sharedPersonMeal(d,myView(),slot);
+    if(sharedPlanned&&personalMealAllowed(sharedPlanned))return sharedPlanned;
+    if(key&&mealOverrides()[key]&&personalMealAllowed(mealOverrides()[key]))return mealOverrides()[key];
   }
   const candidates=mealCandidates(slot);
   return candidates.length?(candidates[dayIndex%candidates.length]||candidates[0]):'No compatible meal found — change your food preferences or diet settings.';
@@ -1183,6 +1185,14 @@ async function savePlannedMealEdit(day,slot,text){
     updatedMenu.days[day]={...updatedMenu.days[day],person_lunches:personLunches};
     await saveMenuAndSyncArtifacts(updatedMenu);
     if(person===myView())await syncCheckedSnapshotAfterPlanChange(day,'lunch',clean);
+    return;
+  }
+  if(slot==='breakfast'||slot==='afternoon'){
+    const updatedMenu=menuWithPersonMeal(day,myView(),slot,clean,'custom');
+    await saveMenuAndSyncArtifacts(updatedMenu);
+    const overrides={...mealOverrides()};delete overrides[`${day}-${myView()}-${slot}`];
+    await saveSettingAtomic('meal_overrides',overrides);
+    await syncCheckedSnapshotAfterPlanChange(day,slot,clean);
     return;
   }
   const key=`${day}-${myView()}-${slot}`,overrides={...mealOverrides(),[key]:clean};
@@ -1500,16 +1510,19 @@ async function joinHousehold(){
   }
   await load();await enterApp();
 }
-async function migrateSharedLunchPlanV81(){
-  if(personal?.settings?.shared_lunch_v81===true)return;
+async function migrateSharedPersonMealsV82(){
+  if(personal?.settings?.shared_person_meals_v82===true)return;
   const overrides={...mealOverrides()},updated=JSON.parse(JSON.stringify(menu()));
   let menuChanged=false,overrideChanged=false;
   for(const [key,value] of Object.entries(overrides)){
     const parts=key.split('-'),day=Number(parts[0]),person=parts[1],slot=parts[2];
-    if(slot!=='lunch'||person!==myView()||!updated.days?.[day]||!value)continue;
-    const lunches={...(updated.days[day].person_lunches||{})},modes={...(updated.days[day].person_lunch_modes||{})};
-    lunches[person]=value;modes[person]='custom';
-    updated.days[day]={...updated.days[day],person_lunches:lunches,person_lunch_modes:modes};
+    if(!['breakfast','lunch','afternoon'].includes(slot)||person!==myView()||!updated.days?.[day]||!value)continue;
+    const meals={...(updated.days[day].person_meals||{})},personMeals={...(meals[person]||{})};
+    personMeals[slot]=value;meals[person]=personMeals;
+    updated.days[day]={...updated.days[day],person_meals:meals};
+    if(slot==='lunch'){
+      const lunches={...(updated.days[day].person_lunches||{})};lunches[person]=value;updated.days[day].person_lunches=lunches;
+    }
     delete overrides[key];menuChanged=true;overrideChanged=true;
   }
   for(let day=0;day<(updated.days?.length||0);day++){
@@ -1522,9 +1535,9 @@ async function migrateSharedLunchPlanV81(){
   }
   if(overrideChanged)await saveSettingAtomic('meal_overrides',overrides);
   if(menuChanged)await saveMenuAndSyncArtifacts(updated);
-  await saveSettingAtomic('shared_lunch_v81',true);
+  await saveSettingAtomic('shared_person_meals_v82',true);
 }
-async function enterApp(){await migrateNoCookInventoryV71();await migrateCheckedMealsToActualV75();await migrateSharedLunchPlanV81();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
+async function enterApp(){await migrateNoCookInventoryV71();await migrateCheckedMealsToActualV75();await migrateSharedPersonMealsV82();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
 async function subscribe(){
   for(const c of channels)await supabase.removeChannel(c);channels=[];
   if(!profile?.household_id)return;
@@ -1836,7 +1849,11 @@ async function saveMenuAndSyncArtifacts(updatedMenu,statusEl=null){
   if(Array.isArray(merged.days)&&Array.isArray(latestMenu?.days)){
     merged.days=merged.days.map((d,i)=>{
       const latest=latestMenu.days.find(x=>x?.date===d?.date)||latestMenu.days[i]||{};
-      return {...d,person_lunches:{...(latest.person_lunches||{}),...(d.person_lunches||{})},person_lunch_modes:{...(latest.person_lunch_modes||{}),...(d.person_lunch_modes||{})}};
+      const mergedPersonMeals={...(latest.person_meals||{})};
+      for(const [person,slots] of Object.entries(d.person_meals||{}))mergedPersonMeals[person]={...(mergedPersonMeals[person]||{}),...(slots||{})};
+      const mergedPersonModes={...(latest.person_meal_modes||{})};
+      for(const [person,slots] of Object.entries(d.person_meal_modes||{}))mergedPersonModes[person]={...(mergedPersonModes[person]||{}),...(slots||{})};
+      return {...d,person_meals:mergedPersonMeals,person_meal_modes:mergedPersonModes,person_lunches:{...(latest.person_lunches||{}),...(d.person_lunches||{})},person_lunch_modes:{...(latest.person_lunch_modes||{}),...(d.person_lunch_modes||{})}};
     });
   }
   const priorMenu=shared?.menu;
@@ -1975,19 +1992,33 @@ function nextSharedDinner(current){
   const choices=sharedDinnerAlternatives().filter(x=>mealUnavailableTerms(x).length===0);
   return choices.find(x=>x!==current) || choices[0] || current;
 }
-function sharedPersonLunch(d,person){
-  const x=d?.person_lunches;
-  return x&&typeof x==='object'&&x[person]?String(x[person]):'';
+function sharedPersonMeal(d,person,slot){
+  const x=d?.person_meals;
+  const byPerson=x&&typeof x==='object'&&x[person]&&typeof x[person]==='object'?x[person]:{};
+  if(byPerson[slot])return String(byPerson[slot]);
+  if(slot==='lunch'){
+    const legacy=d?.person_lunches;
+    if(legacy&&typeof legacy==='object'&&legacy[person])return String(legacy[person]);
+  }
+  return '';
 }
-function menuWithPersonLunch(dayIndex,person,text,mode='custom'){
+function sharedPersonLunch(d,person){return sharedPersonMeal(d,person,'lunch');}
+function menuWithPersonMeal(dayIndex,person,slot,text,mode='custom'){
   const updated=JSON.parse(JSON.stringify(menu())),day=updated.days?.[dayIndex];
   if(!day)return updated;
-  const lunches={...(day.person_lunches||{})},modes={...(day.person_lunch_modes||{})};
-  lunches[person]=String(text||'').trim();
-  modes[person]=mode;
-  updated.days[dayIndex]={...day,person_lunches:lunches,person_lunch_modes:modes};
+  const meals={...(day.person_meals||{})},personMeals={...(meals[person]||{})};
+  personMeals[slot]=String(text||'').trim();meals[person]=personMeals;
+  const modes={...(day.person_meal_modes||{})},personModes={...(modes[person]||{})};
+  personModes[slot]=mode;modes[person]=personModes;
+  updated.days[dayIndex]={...day,person_meals:meals,person_meal_modes:modes};
+  if(slot==='lunch'){
+    const lunches={...(day.person_lunches||{})},lunchModes={...(day.person_lunch_modes||{})};
+    lunches[person]=String(text||'').trim();lunchModes[person]=mode;
+    updated.days[dayIndex].person_lunches=lunches;updated.days[dayIndex].person_lunch_modes=lunchModes;
+  }
   return updated;
 }
+function menuWithPersonLunch(dayIndex,person,text,mode='custom'){return menuWithPersonMeal(dayIndex,person,'lunch',text,mode);}
 async function syncCheckedSnapshotAfterPlanChange(day,slot,text){
   if(ui.view!==myView())return;
   const d=menu().days?.[day],id=`${day}-${myView()}-${slot}`;
@@ -2008,10 +2039,11 @@ async function syncCheckedSnapshotAfterPlanChange(day,slot,text){
 
 function defaultPersonMealText(d,k,person=ui.view){
   if(k==='dinner')return d?.dinner||'';
-  if(k==='lunch'){
-    if(person==='Clark'||person==='Elizabeth')return sharedPersonLunch(d,person)||d?.lunch||'';
-    return d?.lunch||'';
+  if(person==='Clark'||person==='Elizabeth'){
+    const sharedPlanned=sharedPersonMeal(d,person,k);
+    if(sharedPlanned)return sharedPlanned;
   }
+  if(k==='lunch')return d?.lunch||'';
   if(person==='Clark')return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
   if(person==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:d?.[k]||'';
   if(k==='breakfast')return `Clark: ${d?.clark_am||''}\nElizabeth: ${d?.elizabeth_breakfast||''}`;
@@ -2288,9 +2320,9 @@ function rawWeekMealText(d,k){
   if(k==='dinner')return d?.dinner||'';
   if(ui.view==='Clark'){
     if(k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)return '';
-    return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:k==='lunch'?(sharedPersonLunch(d,'Clark')||d?.lunch||''):d?.[k]||'';
+    return k==='breakfast'?(sharedPersonMeal(d,'Clark','breakfast')||d?.clark_am||''):k==='afternoon'?(sharedPersonMeal(d,'Clark','afternoon')||d?.clark_afternoon||''):k==='lunch'?(sharedPersonLunch(d,'Clark')||d?.lunch||''):d?.[k]||'';
   }
-  if(ui.view==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:k==='lunch'?(sharedPersonLunch(d,'Elizabeth')||d?.lunch||''):d?.[k]||'';
+  if(ui.view==='Elizabeth')return k==='breakfast'?(sharedPersonMeal(d,'Elizabeth','breakfast')||d?.elizabeth_breakfast||''):k==='afternoon'?(sharedPersonMeal(d,'Elizabeth','afternoon')||d?.elizabeth_snack||''):k==='lunch'?(sharedPersonLunch(d,'Elizabeth')||d?.lunch||''):d?.[k]||'';
   if(k==='breakfast'){
     if(myView()==='Clark'&&personalProfile().intermittent_fasting)return `Elizabeth: ${d?.elizabeth_breakfast||''}`;
     if(myView()==='Elizabeth'&&personalProfile().intermittent_fasting)return `Clark: ${d?.clark_am||''}`;
@@ -2459,7 +2491,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v81<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v82<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
