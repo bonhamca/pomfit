@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=77';
+import { DEFAULT_DATA } from './data.js?v=78';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=77;
+const APP_VERSION=78;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -110,6 +110,10 @@ function energyLog(){const x=personal?.settings?.energy_log;return x&&typeof x==
 function actualMeals(){const x=personal?.settings?.actual_meals;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
 function actualMealEntry(i,d,slot){
   const x=actualMeals()?.[isoDateForDay(i,d)]?.[slot];
+  if(slot==='dinner'&&d?.dinner_actual_shared===true&&x?.source!=='manual'){
+    const text=plannedMealTextWithFlavor(d,i,slot,d?.dinner||'');
+    return text?{text,source:'shared_dinner',saved_at:d?.dinner_actual_at||null}:null;
+  }
   return x&&typeof x==='object'&&x.text?x:null;
 }
 function actualMealText(i,d,slot){return actualMealEntry(i,d,slot)?.text||'';}
@@ -120,6 +124,19 @@ async function saveActualMeal(i,d,slot,text){
   day[slot]={text:clean,source:'manual',saved_at:new Date().toISOString()};
   all[dateKey]=day;
   await saveSettingAtomic('actual_meals',all);
+
+  if(slot==='dinner'&&d){
+    const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days?.[i]?.dinner||'');
+    if(updatedMenu.days?.[i]){
+      updatedMenu.days[i]={...updatedMenu.days[i],dinner:clean,dinner_actual_shared:true,dinner_actual_at:new Date().toISOString()};
+      if(updatedMenu.days[i+1]){
+        updatedMenu.days[i+1]={...updatedMenu.days[i+1],lunch:sharedLeftoverLunchText(clean),lunch_synced_from_dinner:true};
+      }
+      await saveMenuAndSyncArtifacts(updatedMenu);
+      d=updatedMenu.days[i];
+    }
+  }
+
   if(checks()[`${i}-${myView()}-${slot}`]===true){
     const log={...energyLog()},energy={...(log[dateKey]||{})},meals={...(energy.meals||{})},protein={...(energy.protein_meals||{})},auto={...(energy.auto_tracked_meals||{})};
     const cal=estimateMealCalories(clean),proteinG=estimateMealProtein(clean);
@@ -1130,8 +1147,11 @@ async function savePlannedMealEdit(day,slot,text){
   const clean=String(text||'').trim(),days=menu().days,d=days[day];
   if(!d||!clean)throw new Error('Enter a meal.');
   if(slot==='dinner'){
-    const updatedMenu=JSON.parse(JSON.stringify(menu()));
+    const updatedMenu=JSON.parse(JSON.stringify(menu())),oldDinner=String(updatedMenu.days[day]?.dinner||'');
     updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean,dinner_manual:true,dinner_manual_at:new Date().toISOString(),dinner_manual_by:myView()};
+    if(updatedMenu.days[day+1]){
+      updatedMenu.days[day+1]={...updatedMenu.days[day+1],lunch:sharedLeftoverLunchText(clean),lunch_synced_from_dinner:true};
+    }
     await saveMenuAndSyncArtifacts(updatedMenu);
     return;
   }
@@ -2013,6 +2033,17 @@ function leftoverLunchText(dinner,person=myView()){
   const protein=mealProtein(dinner),oz=lunchReserveOz(person);
   return `LEFTOVER ${protein.toUpperCase()} LUNCH: reserve ${oz} oz cooked ${protein} from dinner. Add salad or available vegetables; keep dressing/sauce separate until eating.`;
 }
+function sharedLeftoverLunchText(dinner){
+  const protein=mealProtein(dinner);
+  return `LEFTOVER ${protein.toUpperCase()} LUNCH: Clark 6 oz cooked; Elizabeth 4 oz cooked. Add salad or available vegetables; keep dressing/sauce separate until eating.`;
+}
+function sharedLunchWasDerivedFromDinner(lunch,oldDinner){
+  const l=String(lunch||'').toLowerCase(),p=mealProtein(oldDinner);
+  if(!l)return false;
+  if(/\bleftover\b/.test(l))return true;
+  return p&&p!=='protein'&&l.includes(String(p).toLowerCase());
+}
+
 function leftoverPlanForDay(i){
   const plan=leftoverPlans()[String(i)]||null,d=menu()?.days?.[i],target=menu()?.days?.[i+1];
   if(!plan||!d||!target)return null;
@@ -2211,8 +2242,16 @@ function renderTrackingMealLog(i,d){
   return `<div class="card"><h3>Meal details</h3><p class="small">Use <b>Track calories & sync</b> above to fill estimates for the meals you marked eaten. The fields below are only for correcting those values.</p><div class="tracking-meals">${rows}</div></div>`;
 }
 function renderTracking(){
+  if(ui.view!==myView()){
+    return `<div class="card"><h2>Tracking is private</h2><p>Tracking belongs to the signed-in person. Switch back to ${esc(myView())} to view or edit it.</p><button class="primary" id="trackingMyViewBtn">Open my tracking</button></div>`;
+  }
   const i=todayIndex(),d=(Array.isArray(menu()?.days)?menu().days[i]:null)||DEFAULT_DATA.days[i];
-  return `<div class="card"><div class="dayhead"><div><h2>Calories & protein tracking</h2><div class="small">Private to ${esc(myName())} • ${esc(d?.date||'Today')}</div></div><button class="ghost" id="backToTodayBtn">Back to Today</button></div><p class="small">Mark meals eaten on Today, then press <b>Track calories & sync</b> once. PomFit fills those meal estimates; use the meal fields only for corrections.</p></div>${renderMealTrackingCard(i,d)}${renderTrackingMealLog(i,d)}${renderEnergyDashboard(i,d)}`;
+  const safe=(label,fn)=>{
+    try{return fn();}
+    catch(e){console.error('Tracking section failed',label,e);return `<div class="card"><h3>${esc(label)}</h3><p class="small save-warn">This section could not render: ${esc(e?.message||'Unknown error')}</p></div>`;}
+  };
+  const header=`<div class="card"><div class="dayhead"><div><h2>Calories & protein tracking</h2><div class="small">Private to ${esc(myName())} • ${esc(d?.date||'Today')}</div></div><button class="ghost" id="backToTodayBtn">Back to Today</button></div><p class="small">Mark meals eaten on Today, then press <b>Track calories & sync</b> once. PomFit fills those meal estimates; use the meal fields only for corrections.</p></div>`;
+  return header+safe('Track today’s meals',()=>renderMealTrackingCard(i,d))+safe('Meal details',()=>renderTrackingMealLog(i,d))+safe('Calories & protein totals',()=>renderEnergyDashboard(i,d));
 }
 function renderWeek(){
   const source=Array.isArray(menu()?.days)&&menu().days.length?menu().days:(Array.isArray(DEFAULT_DATA?.days)?DEFAULT_DATA.days:[]);
@@ -2325,7 +2364,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v77<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v78<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2730,6 +2769,7 @@ function bindDynamic(){
   if($('#editProfileBtn'))$('#editProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#todayProfileBtn'))$('#todayProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#openTrackingBtn'))$('#openTrackingBtn').onclick=()=>{ui.view=myView();ui.tab='tracking';render();};
+  if($('#trackingMyViewBtn'))$('#trackingMyViewBtn').onclick=()=>{ui.view=myView();ui.tab='tracking';render();};
   if($('#backToTodayBtn'))$('#backToTodayBtn').onclick=()=>{ui.view=myView();ui.tab='today';render();};
   if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=()=>checkFoodOnly();
   if($('#foodQuery'))$('#foodQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();checkFoodOnly();}};
