@@ -313,3 +313,7 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .profile-save-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .profile-save-actions button{width:auto}
 @media(max-width:640px){.profile-save-actions{flex-direction:column}.profile-save-actions button{width:100%}}
+
+.food-check-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.food-check-actions button{width:auto}
+@media(max-width:640px){.food-check-actions{flex-direction:column}.food-check-actions button{width:100%}}
