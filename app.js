@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=72';
+import { DEFAULT_DATA } from './data.js?v=73';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=72;
+const APP_VERSION=73;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -107,6 +107,34 @@ function vitalsComplete(){
   return Number.isFinite(Number(p.age))&&Number(p.age)>0&&Number.isFinite(Number(p.height_in))&&Number(p.height_in)>0&&Number.isFinite(Number(p.weight_lb))&&Number(p.weight_lb)>0;
 }
 function energyLog(){const x=personal?.settings?.energy_log;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function actualMeals(){const x=personal?.settings?.actual_meals;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
+function actualMealEntry(i,d,slot){
+  const x=actualMeals()?.[isoDateForDay(i,d)]?.[slot];
+  return x&&typeof x==='object'&&x.text?x:null;
+}
+function actualMealText(i,d,slot){return actualMealEntry(i,d,slot)?.text||'';}
+async function saveActualMeal(i,d,slot,text){
+  const clean=String(text||'').trim();
+  if(!clean)throw new Error('Enter the meal you actually ate.');
+  const dateKey=isoDateForDay(i,d),all={...actualMeals()},day={...(all[dateKey]||{})};
+  day[slot]={text:clean,saved_at:new Date().toISOString()};
+  all[dateKey]=day;
+  await saveSettingAtomic('actual_meals',all);
+  if(checks()[`${i}-${myView()}-${slot}`]===true){
+    const log={...energyLog()},energy={...(log[dateKey]||{})},meals={...(energy.meals||{})},protein={...(energy.protein_meals||{})},auto={...(energy.auto_tracked_meals||{})};
+    const cal=estimateMealCalories(clean),proteinG=estimateMealProtein(clean);
+    meals[slot]=cal;protein[slot]=proteinG;auto[slot]={calories:cal,protein_g:proteinG,meal_text:clean,synced_at:new Date().toISOString(),actual:true};
+    log[dateKey]={...energy,meals,protein_meals:protein,auto_tracked_meals:auto,last_meal_sync_at:new Date().toISOString()};
+    await saveSettingAtomic('energy_log',log);
+  }
+}
+async function clearActualMeal(i,d,slot){
+  const dateKey=isoDateForDay(i,d),all={...actualMeals()},day={...(all[dateKey]||{})};
+  delete day[slot];
+  if(Object.keys(day).length)all[dateKey]=day;else delete all[dateKey];
+  await saveSettingAtomic('actual_meals',all);
+}
+
 function isoDateForDay(i,d){
   const date=menuDateForDay(d,i);
   const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),day=String(date.getDate()).padStart(2,'0');
@@ -247,6 +275,8 @@ function autoTrackedMealsForDay(i,d){
   return x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 }
 function trackingMealText(d,slot,i){
+  const actual=actualMealText(i,d,slot);
+  if(actual)return actual;
   if(slot==='dinner')return d?.dinner||'';
   if(profileReady()){
     try{
@@ -1037,37 +1067,40 @@ function nextMealAlternative(slot,current){
   const candidates=mealCandidates(slot);
   return candidates.find(x=>x.toLowerCase()!==String(current).toLowerCase())||current;
 }
-async function changeWeekMeal(day,slot,current){
-  const days=menu().days,d=days[day];
-  if(!d)return;
+const WEEK_PROTEIN_SWAPS=['salmon','cod','chicken','beef','shrimp','branzino','tuna'];
+function replaceMealProtein(text,newProtein){
+  const source=String(text||''),p=String(newProtein||'').trim().toLowerCase();
+  if(!p)return source;
+  const pattern=/\b(salmon|cod|chicken|beef|steak|sirloin|flank|shrimp|branzino|tuna|tilapia|trout|sole|catfish|sea bass|hot dog)\b/ig;
+  if(pattern.test(source)){
+    pattern.lastIndex=0;
+    return source.replace(pattern,(m,offset)=>{
+      const repl=p==='beef'?'beef':p;
+      return offset<source.indexOf(':')?repl.toUpperCase():repl;
+    });
+  }
+  return p[0].toUpperCase()+p.slice(1);
+}
+async function savePlannedMealEdit(day,slot,text){
+  const clean=String(text||'').trim(),days=menu().days,d=days[day];
+  if(!d||!clean)throw new Error('Enter a meal.');
   if(slot==='dinner'){
     const updatedMenu=JSON.parse(JSON.stringify(menu()));
-    updatedMenu.days[day]={...updatedMenu.days[day],dinner:nextSharedDinner(current)};
+    updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean};
     await saveMenuAndSyncArtifacts(updatedMenu);
     return;
   }
   if(slot==='lunch'){
     const existing=activeLeftoverLunchOverride(day,myView());
     if(existing){
-      const noCook=existing.choice==='different-no-cook'||existing.can_prep===false||isNoCookLunch(existing.text);
-      const alternative=noCook?chooseNoCookLunch(day,[current]):freshLunchAlternative(day,[current]);
-      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(day,myView())]:{
-        ...existing,text:alternative,choice:noCook?'different-no-cook':'different-prep',can_prep:!noCook,saved_at:new Date().toISOString()
-      }};
+      const noCook=existing.choice==='different-no-cook'||existing.can_prep===false;
+      const dedicated={...leftoverLunchOverrides(),[leftoverTargetKey(day,myView())]:{...existing,text:clean,choice:noCook?'different-no-cook':'different-prep',can_prep:!noCook,saved_at:new Date().toISOString()}};
       await saveSettingAtomic('leftover_lunch_overrides',dedicated);
-      if(day>0){
-        const sourceDay=day-1,plan=leftoverPlanForDay(sourceDay);
-        if(plan){
-          const plans={...leftoverPlans(),[String(sourceDay)]:{...plan,use:false,can_prep:!noCook,target_lunch:alternative,saved_at:new Date().toISOString()}};
-          await saveSettingAtomic('leftover_plans',plans);
-        }
-      }
       await syncArtifactsFromCurrentPlan();
       return;
     }
   }
-  const key=`${day}-${myView()}-${slot}`,alternative=nextMealAlternative(slot,current);
-  const overrides={...mealOverrides(),[key]:alternative};
+  const key=`${day}-${myView()}-${slot}`,overrides={...mealOverrides(),[key]:clean};
   await saveSettingAtomic('meal_overrides',overrides);
   await syncArtifactsFromCurrentPlan();
 }
@@ -1825,6 +1858,10 @@ function defaultPersonMealText(d,k,person=ui.view){
   return d?.[k]||'';
 }
 function textFor(d,k,i=todayIndex()){
+  if(ui.view===myView()){
+    const actual=actualMealText(i,d,k);
+    if(actual)return actual;
+  }
   if(k==='dinner')return d?.dinner||'';
   if(ui.view===myView()&&profileReady()){
     try{
@@ -1906,10 +1943,11 @@ function leftoverPlanner(d,i){
 function meal(d,i,k,label){
   if(ui.view===myView()&&profileReady()&&!isMealEnabled(k))return'';
   const t=textFor(d,k,i);if(!t)return'';
-  const id=`${i}-${ui.view}-${k}`,isMine=ui.view===myView();
+  const id=`${i}-${ui.view}-${k}`,isMine=ui.view===myView(),actual=actualMealEntry(i,d,k);
   const box=isMine?`<input class="check" type="checkbox" data-check="${esc(id)}" ${checks()[id]?'checked':''} aria-label="Mark ${esc(label)} complete">`:'';
   const meta=isMine&&profileReady()?mealMeta(k):'';
-  const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">${k==='dinner'?'Change dinner for both of us':'Not this meal — give me another'}</button>`:'';
+  const alt=isMine&&profileReady()?`<button class="meal-alt" data-alt-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">${k==='dinner'?'Change planned dinner':'Not this meal — give me another'}</button>`:'';
+  const actualBtn=isMine?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(t)}">${actual?'Edit what I ate':'Edit what I ate'}</button>`:'';
   const flavors=isMine&&profileReady()?mealFlavorOptions(t):[];
   const flavor=flavorOverrideFor(d,i,k);
   const flavorBtn=flavors.length?`<button class="ghost flavor-btn" data-flavor-meal="${esc(id)}" data-slot="${esc(k)}" data-current="${esc(t)}">Different flavor</button>`:'';
@@ -1918,7 +1956,7 @@ function meal(d,i,k,label){
   const leftover=k==='dinner'?leftoverPlanner(d,i):'';
   const estimate=estimateMealCalories(t),logged=loggedMealCalories(i,d,k),proteinEstimate=estimateMealProtein(t),proteinLogged=loggedMealProtein(i,d,k);
   const calorieLogger='';
-  return `<div class="meal">${box}<b>${label}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${alt}${flavorBtn}${resetFlavor}</div>${leftover}</div>`;
+  return `<div class="meal">${box}<b>${label}${actual?' <span class="badge ok-badge">ACTUAL</span>':''}${meta?` <span class="small">• ${esc(meta)}</span>`:''}</b><p>${esc(t)}</p>${flavorDisplay(d,i,k,t)}${whey}${calorieLogger}<div class="meal-actions">${actualBtn}${alt}${flavorBtn}${resetFlavor}</div><div data-actual-editor-host="${i}-${k}"></div>${leftover}</div>`;
 }
 function scheduledWorkoutOverride(p,i,d){
   const raw=p==='Clark'?d.workout_c:d.workout_e;
@@ -2051,6 +2089,10 @@ function safeWeekMealText(d,i,k){
   try{
     if(ui.view===myView()&&!isMealEnabledForPerson(k,myView()))return '';
     if(ui.view==='Both')return rawWeekMealText(d,k);
+    if(ui.view===myView()){
+      const actual=actualMealText(i,d,k);
+      if(actual)return actual;
+    }
     return textFor(d,k,i)||rawWeekMealText(d,k);
   }catch(e){console.error('Week meal render fallback',i,k,e);return rawWeekMealText(d,k);}
 }
@@ -2059,11 +2101,12 @@ function weekDayCard(d,i){
   const row=(label,k)=>{
     const text=safeWeekMealText(d,i,k);
     if(!text)return '';
+    const actual=own?actualMealEntry(i,d,k):null;
     const noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
     const canChange=own&&profileReady();
-    const button=canChange?`<button class="ghost week-change-meal" data-week-change="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">${k==='dinner'?'Change shared dinner':'Change meal'}</button>`:'';
+    const buttons=canChange?`<div class="week-edit-actions"><button class="ghost week-change-meal" data-week-edit="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">Edit plan</button>${actual?`<button class="ghost" data-edit-actual="${i}" data-actual-slot="${k}" data-actual-current="${esc(text)}">Edit actual</button>`:''}</div>`:'';
     const shownLabel=(ui.view==='Both'&&k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)?'Breakfast — Elizabeth':label;
-    return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${button}</div>`;
+    return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${actual?'<span class="badge ok-badge">ACTUAL</span>':''}${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${buttons}<div class="week-inline-editor" data-week-editor-host="${i}-${k}"></div></div>`;
   };
   return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
 }
@@ -2072,8 +2115,8 @@ function renderTrackingMealLog(i,d){
   const rows=['breakfast','lunch','afternoon','dinner'].filter(slot=>isMealEnabled(slot)).map(slot=>{
     const text=trackingMealText(d,slot,i),estimate=estimateMealCalories(text),proteinEstimate=estimateMealProtein(text);
     const logged=loggedMealCalories(i,d,slot),proteinLogged=loggedMealProtein(i,d,slot),eaten=checks()[`${i}-${myView()}-${slot}`]===true;
-    const source=autoTrackedMealsForDay(i,d)[slot]?'Synced from checked meal':'Manual / not yet synced';
-    return `<div class="tracking-meal-row"><div><b>${labels[slot]}</b><div class="small">${eaten?'✓ Marked eaten':'Not marked eaten'} • ${esc(source)}</div><div>${esc(text)}</div><div class="small">PomFit estimate: ~${estimate} kcal • ~${proteinEstimate} g protein</div></div><div class="tracking-entry simplified"><label class="small">Calories<input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${slot}" value="${logged??''}" placeholder="${estimate}"></label><label class="small">Protein (g)<input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${slot}" value="${proteinLogged??''}" placeholder="${proteinEstimate}"></label><div class="small tracking-edit-note">Edit only if the estimate is wrong; changes save when you leave the field.</div></div></div>`;
+    const actual=actualMealEntry(i,d,slot),source=actual?'Actual meal saved':autoTrackedMealsForDay(i,d)[slot]?'Synced from checked meal':'Manual / not yet synced';
+    return `<div class="tracking-meal-row"><div><b>${labels[slot]}${actual?' <span class="badge ok-badge">ACTUAL</span>':''}</b><div class="small">${eaten?'✓ Marked eaten':'Not marked eaten'} • ${esc(source)}</div><div>${esc(text)}</div><button class="ghost tracking-actual-btn" data-edit-actual="${i}" data-actual-slot="${slot}" data-actual-current="${esc(text)}">Edit what I ate</button><div data-actual-editor-host="${i}-${slot}"></div><div class="small">PomFit estimate: ~${estimate} kcal • ~${proteinEstimate} g protein</div></div><div class="tracking-entry simplified"><label class="small">Calories<input class="search" type="number" min="0" step="1" data-meal-calories="${i}" data-meal-slot="${slot}" value="${logged??''}" placeholder="${estimate}"></label><label class="small">Protein (g)<input class="search" type="number" min="0" step="1" data-meal-protein="${i}" data-meal-slot="${slot}" value="${proteinLogged??''}" placeholder="${proteinEstimate}"></label><div class="small tracking-edit-note">Edit only if the estimate is wrong; changes save when you leave the field.</div></div></div>`;
   }).join('');
   return `<div class="card"><h3>Meal details</h3><p class="small">Use <b>Track calories & sync</b> above to fill estimates for the meals you marked eaten. The fields below are only for correcting those values.</p><div class="tracking-meals">${rows}</div></div>`;
 }
@@ -2177,7 +2220,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v72<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v73<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2368,15 +2411,55 @@ function bindDynamic(){
       }catch(err){if(status)status.textContent='Could not choose a no-cook lunch: '+err.message;}
       return;
     }
-    const weekChangeBtn=e.target.closest?.('[data-week-change]');
-    if(weekChangeBtn){
+    const editActualBtn=e.target.closest?.('[data-edit-actual]');
+    if(editActualBtn){
       e.preventDefault();
-      try{
-        await changeWeekMeal(Number(weekChangeBtn.dataset.weekChange),weekChangeBtn.dataset.weekSlot||'',weekChangeBtn.dataset.weekCurrent||'');
-        render();
-      }catch(err){syncMsg('Meal change failed: '+(err.message||'Unknown error'));}
+      const day=Number(editActualBtn.dataset.editActual),slot=editActualBtn.dataset.actualSlot||'',d=menu().days[day],host=$('[data-actual-editor-host="'+day+'-'+slot+'"]');
+      if(!d||!host)return;
+      const current=actualMealText(day,d,slot)||editActualBtn.dataset.actualCurrent||textFor(d,slot,day);
+      host.innerHTML=`<div class="meal-inline-editor"><label class="small">What I actually ate<input class="search" data-actual-input value="${esc(current)}"></label><div class="meal-actions"><button class="primary" data-save-actual="${day}" data-save-actual-slot="${slot}">Save actual meal</button>${actualMealEntry(day,d,slot)?`<button class="ghost" data-clear-actual="${day}" data-clear-actual-slot="${slot}">Use planned meal instead</button>`:''}</div><div class="small">This changes Today/Tracking/history for you; it does not rewrite the planned household menu.</div></div>`;
       return;
     }
+    const saveActualBtn=e.target.closest?.('[data-save-actual]');
+    if(saveActualBtn){
+      e.preventDefault();
+      const day=Number(saveActualBtn.dataset.saveActual),slot=saveActualBtn.dataset.saveActualSlot||'',d=menu().days[day],host=$('[data-actual-editor-host="'+day+'-'+slot+'"]'),input=host?.querySelector('[data-actual-input]');
+      try{await saveActualMeal(day,d,slot,input?.value||'');render();}catch(err){if(host)host.insertAdjacentHTML('beforeend','<div class="small save-warn">'+esc(err.message||'Could not save actual meal')+'</div>');}
+      return;
+    }
+    const clearActualBtn=e.target.closest?.('[data-clear-actual]');
+    if(clearActualBtn){
+      e.preventDefault();
+      const day=Number(clearActualBtn.dataset.clearActual),slot=clearActualBtn.dataset.clearActualSlot||'',d=menu().days[day];
+      try{await clearActualMeal(day,d,slot);render();}catch(err){syncMsg('Could not clear actual meal: '+(err.message||'Unknown error'));}
+      return;
+    }
+    const weekEditBtn=e.target.closest?.('[data-week-edit]');
+    if(weekEditBtn){
+      e.preventDefault();
+      const day=Number(weekEditBtn.dataset.weekEdit),slot=weekEditBtn.dataset.weekSlot||'',current=weekEditBtn.dataset.weekCurrent||'',host=$('[data-week-editor-host="'+day+'-'+slot+'"]');
+      if(!host)return;
+      const quick=slot==='dinner'?`<div class="week-protein-swaps">${WEEK_PROTEIN_SWAPS.map(p=>`<button class="ghost" data-week-protein="${esc(p)}" data-week-protein-day="${day}" data-week-protein-slot="${slot}">${esc(p[0].toUpperCase()+p.slice(1))}</button>`).join('')}</div>`:'';
+      host.innerHTML=`<div class="meal-inline-editor"><label class="small">Planned meal<input class="search" data-week-meal-input value="${esc(current)}"></label>${quick}<div class="meal-actions"><button class="primary" data-save-week-meal="${day}" data-save-week-slot="${slot}">Save planned meal</button><button class="ghost" data-cancel-week-edit>Cancel</button></div><div class="small">${slot==='dinner'?'Quick protein buttons replace the protein in this planned dinner and then sync Prep + Groceries.':'Edit the meal directly, then save.'}</div></div>`;
+      return;
+    }
+    const weekProteinBtn=e.target.closest?.('[data-week-protein]');
+    if(weekProteinBtn){
+      e.preventDefault();
+      const day=Number(weekProteinBtn.dataset.weekProteinDay),slot=weekProteinBtn.dataset.weekProteinSlot||'',host=$('[data-week-editor-host="'+day+'-'+slot+'"]'),input=host?.querySelector('[data-week-meal-input]');
+      if(input)input.value=replaceMealProtein(input.value,weekProteinBtn.dataset.weekProtein||'');
+      return;
+    }
+    const saveWeekMealBtn=e.target.closest?.('[data-save-week-meal]');
+    if(saveWeekMealBtn){
+      e.preventDefault();
+      const day=Number(saveWeekMealBtn.dataset.saveWeekMeal),slot=saveWeekMealBtn.dataset.saveWeekSlot||'',host=$('[data-week-editor-host="'+day+'-'+slot+'"]'),input=host?.querySelector('[data-week-meal-input]');
+      try{await savePlannedMealEdit(day,slot,input?.value||'');render();}catch(err){if(host)host.insertAdjacentHTML('beforeend','<div class="small save-warn">'+esc(err.message||'Could not save meal')+'</div>');}
+      return;
+    }
+    const cancelWeekEdit=e.target.closest?.('[data-cancel-week-edit]');
+    if(cancelWeekEdit){e.preventDefault();const host=cancelWeekEdit.closest('.week-inline-editor');if(host)host.innerHTML='';return;}
+
     const modeBtn=e.target.closest?.('[data-grocery-mode]');
     if(modeBtn){
       e.preventDefault();

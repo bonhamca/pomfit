@@ -356,3 +356,11 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .week-menu-card .week-meal-row.editable>div:first-child{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .week-change-meal{white-space:nowrap}
 @media(max-width:720px){.week-menu-card .week-meal-row.editable{grid-template-columns:1fr}.week-change-meal{width:100%}}
+
+.meal-inline-editor{margin-top:9px;padding:10px;border-radius:12px;background:var(--soft)}
+.meal-inline-editor .search{width:100%;margin-top:5px}
+.week-inline-editor{grid-column:1/-1}
+.week-protein-swaps{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.week-edit-actions{display:flex;flex-wrap:wrap;gap:6px}
+.tracking-actual-btn{margin-top:7px}
+@media(max-width:720px){.week-edit-actions{width:100%}.week-edit-actions button{width:100%}.week-protein-swaps button{flex:1 1 30%}}
