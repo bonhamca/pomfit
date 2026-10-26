@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=74';
+import { DEFAULT_DATA } from './data.js?v=75';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=74;
+const APP_VERSION=75;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -117,7 +117,7 @@ async function saveActualMeal(i,d,slot,text){
   const clean=String(text||'').trim();
   if(!clean)throw new Error('Enter the meal you actually ate.');
   const dateKey=isoDateForDay(i,d),all={...actualMeals()},day={...(all[dateKey]||{})};
-  day[slot]={text:clean,saved_at:new Date().toISOString()};
+  day[slot]={text:clean,source:'manual',saved_at:new Date().toISOString()};
   all[dateKey]=day;
   await saveSettingAtomic('actual_meals',all);
   if(checks()[`${i}-${myView()}-${slot}`]===true){
@@ -134,6 +134,51 @@ async function clearActualMeal(i,d,slot){
   if(Object.keys(day).length)all[dateKey]=day;else delete all[dateKey];
   await saveSettingAtomic('actual_meals',all);
 }
+async function snapshotCheckedMeal(i,d,slot,checked){
+  const dateKey=isoDateForDay(i,d),all={...actualMeals()},day={...(all[dateKey]||{})},existing=day[slot];
+  if(checked){
+    if(existing?.text)return;
+    let text='';
+    const logged=energyDay(i,d)?.auto_tracked_meals?.[slot]?.meal_text;
+    if(logged)text=logged;
+    if(!text){
+      if(slot==='dinner')text=d?.dinner||'';
+      else{
+        try{text=chooseMeal(slot,i,`${i}-${myView()}-${slot}`)||defaultPersonMealText(d,slot,myView());}
+        catch{text=defaultPersonMealText(d,slot,myView());}
+      }
+    }
+    if(text)day[slot]={text,source:'checked_snapshot',saved_at:new Date().toISOString()};
+  }else if(existing?.source==='checked_snapshot'){
+    delete day[slot];
+  }
+  if(Object.keys(day).length)all[dateKey]=day;else delete all[dateKey];
+  await saveSettingAtomic('actual_meals',all);
+}
+async function migrateCheckedMealsToActualV75(){
+  if(personal?.settings?.checked_actual_v75===true)return;
+  const all={...actualMeals()},days=menu().days,mealChecks=checks();
+  let changed=false;
+  for(let i=0;i<days.length;i++){
+    const d=days[i],dateKey=isoDateForDay(i,d),day={...(all[dateKey]||{})};
+    for(const slot of ['breakfast','lunch','afternoon','dinner']){
+      if(mealChecks[`${i}-${myView()}-${slot}`]!==true||day[slot]?.text)continue;
+      let text=energyDay(i,d)?.auto_tracked_meals?.[slot]?.meal_text||'';
+      if(!text){
+        if(slot==='dinner')text=d?.dinner||'';
+        else{
+          try{text=chooseMeal(slot,i,`${i}-${myView()}-${slot}`)||defaultPersonMealText(d,slot,myView());}
+          catch{text=defaultPersonMealText(d,slot,myView());}
+        }
+      }
+      if(text){day[slot]={text,source:'checked_snapshot',saved_at:new Date().toISOString()};changed=true;}
+    }
+    if(Object.keys(day).length)all[dateKey]=day;
+  }
+  if(changed)await saveSettingAtomic('actual_meals',all);
+  await saveSettingAtomic('checked_actual_v75',true);
+}
+
 
 function isoDateForDay(i,d){
   const date=menuDateForDay(d,i);
@@ -1086,7 +1131,7 @@ async function savePlannedMealEdit(day,slot,text){
   if(!d||!clean)throw new Error('Enter a meal.');
   if(slot==='dinner'){
     const updatedMenu=JSON.parse(JSON.stringify(menu()));
-    updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean};
+    updatedMenu.days[day]={...updatedMenu.days[day],dinner:clean,dinner_manual:true,dinner_manual_at:new Date().toISOString(),dinner_manual_by:myView()};
     await saveMenuAndSyncArtifacts(updatedMenu);
     return;
   }
@@ -1414,7 +1459,7 @@ async function joinHousehold(){
   }
   await load();await enterApp();
 }
-async function enterApp(){await migrateNoCookInventoryV71();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
+async function enterApp(){await migrateNoCookInventoryV71();await migrateCheckedMealsToActualV75();show('appShell');$('#headerSub').textContent=`${household.name} • ${myName()}`;await subscribe();render();syncMsg('Synced');maybeStartTour();}
 async function subscribe(){
   for(const c of channels)await supabase.removeChannel(c);channels=[];
   if(!profile?.household_id)return;
@@ -1599,6 +1644,7 @@ function buildSyncedMenuFromProfile(){
   const choices=rankedDinnerChoices();
   if(!Array.isArray(current.days))current.days=[];
   current.days=current.days.slice(0,7).map((d,i)=>{
+    if(d?.dinner_manual===true)return d;
     if(mealFitsProfile(d?.dinner||''))return d;
     const replacement=choices[i%Math.max(choices.length,1)]||d?.dinner||'Choose a compatible shared dinner';
     return {...d,dinner:replacement};
@@ -2233,7 +2279,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v74<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v75<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -2481,7 +2527,15 @@ function bindDynamic(){
       return;
     }
   };
-  $$('[data-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),meal_checks:{...checks(),[x.dataset.check]:x.checked}}}));
+  $$('[data-check]').forEach(x=>x.onchange=async()=>{
+    const id=x.dataset.check,parts=id.split('-'),day=Number(parts[0]),slot=parts[parts.length-1],d=menu().days[day];
+    try{
+      const nextChecks={...checks(),[id]:x.checked};
+      await saveSettingAtomic('meal_checks',nextChecks);
+      if(d&&ui.view===myView())await snapshotCheckedMeal(day,d,slot,x.checked);
+      render();
+    }catch(e){syncMsg('Meal check save failed: '+(e.message||'Unknown error'));}
+  });
   $$('[data-workout-check]').forEach(x=>x.onchange=()=>savePersonal({settings:{...(personal.settings||{}),workout_checks:{...workoutChecks(),[x.dataset.workoutCheck]:x.checked}}}));
   $$('[data-track-checked-meals]').forEach(btn=>btn.onclick=async()=>{
     const i=Number(btn.dataset.trackCheckedMeals),d=menu().days[i],status=$('[data-track-meal-status="'+i+'"]');
@@ -2703,7 +2757,7 @@ function bindDynamic(){
         const day=Number(key.split('-')[0]);
         const next=nextSharedDinner(current);
         const updatedMenu=JSON.parse(JSON.stringify(menu()));
-        updatedMenu.days[day]={...updatedMenu.days[day],dinner:next};
+        updatedMenu.days[day]={...updatedMenu.days[day],dinner:next,dinner_manual:true,dinner_manual_at:new Date().toISOString(),dinner_manual_by:myView()};
         await saveMenuAndSyncArtifacts(updatedMenu);
         render();
         return;
