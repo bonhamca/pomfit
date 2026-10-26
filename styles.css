@@ -295,3 +295,17 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .supplement-history{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .supplement-chip{font-size:.78rem;padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.7)}
 @media(max-width:640px){.supplement-controls{grid-template-columns:1fr}.supplement-controls button{width:100%}}
+
+.food-check-result{margin-top:10px;padding:10px 12px;border-radius:12px;display:flex;gap:8px;align-items:flex-start;background:var(--soft)}
+.food-check-result b{white-space:nowrap}
+.food-check-result.status-yes{outline:1px solid #7aa987}
+.food-check-result.status-limited,.food-check-result.status-warn{outline:1px solid #c6a15b}
+.food-check-result.status-no{outline:1px solid #b56d6d}
+.food-check-result.status-unknown{outline:1px solid #8a8a8a}
+.profile-autosave-status{margin-top:8px}
+.profile-autosave-status.save-ok{font-weight:600}
+.profile-autosave-status.save-warn{font-weight:600}
+.week-summary{margin-bottom:12px}
+.week-menu-card .week-meal-row{display:grid;grid-template-columns:150px 1fr;gap:10px;padding:8px 0;border-top:1px solid rgba(0,0,0,.07)}
+.week-menu-card .week-meal-row:first-of-type{border-top:0}
+@media(max-width:640px){.week-menu-card .week-meal-row{grid-template-columns:1fr;gap:3px}}
