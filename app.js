@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=71';
+import { DEFAULT_DATA } from './data.js?v=72';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=71;
+const APP_VERSION=72;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -886,34 +886,41 @@ const MEAL_CATALOG={
 function mealCandidates(slot){
   const diet=MEAL_CATALOG[dietStyle()]||MEAL_CATALOG.balanced;
   const options=diet[slot]||diet.lunch,dislikes=foodList('food_dislikes'),likes=foodList('food_likes');
-  let ranked=options.map((x,idx)=>({
+  let usable=options.map((x,idx)=>({
     x,idx,
-    blocked:dislikes.some(d=>x[1].some(i=>i.includes(d)||d.includes(i))),
-    score:likes.reduce((sum,l)=>sum+(x[1].some(i=>i.includes(l)||l.includes(i))?2:0),0)
-  }));
-  let usable=ranked.filter(r=>!r.blocked);if(!usable.length)usable=ranked;
+    blocked:dislikes.some(d=>x[1].some(i=>i.includes(d)||d.includes(i)||prefMatchesText(d,x[0]))),
+    score:likes.reduce((sum,l)=>sum+(x[1].some(i=>i.includes(l)||l.includes(i))||prefMatchesText(l,x[0])?2:0),0)
+  })).filter(r=>!r.blocked);
   usable.sort((a,b)=>b.score-a.score||a.idx-b.idx);
   return usable.map(r=>r.x[0]);
+}
+function personalMealAllowed(text){
+  if(!text)return false;
+  if(!dietAllowsMealText(text))return false;
+  return !foodList('food_dislikes').some(d=>prefMatchesText(d,text));
 }
 function chooseMeal(slot,dayIndex,key=''){
   if(slot==='lunch'){
     const leftover=activeLeftoverLunchOverride(dayIndex,myView());
-    if(leftover?.text)return leftover.text;
-    if(!legacyLeftoverPlanForTarget(dayIndex)&&key&&mealOverrides()[key])return mealOverrides()[key];
-  }else if(key&&mealOverrides()[key]){
+    if(leftover?.text&&personalMealAllowed(leftover.text))return leftover.text;
+    if(leftover?.choice==='different-no-cook'||leftover?.can_prep===false){
+      const noCook=chooseNoCookLunch(dayIndex,[leftover.text]);
+      if(noCook)return noCook;
+    }
+    const general=key?mealOverrides()[key]:null;
+    if(!legacyLeftoverPlanForTarget(dayIndex)&&general&&personalMealAllowed(general))return general;
+  }else if(key&&mealOverrides()[key]&&personalMealAllowed(mealOverrides()[key])){
     return mealOverrides()[key];
   }
   const candidates=mealCandidates(slot);
-  return candidates[dayIndex%candidates.length]||'Choose a compatible meal';
+  return candidates.length?(candidates[dayIndex%candidates.length]||candidates[0]):'No compatible meal found — change your food preferences or diet settings.';
 }
 function freshLunchAlternative(dayIndex,avoid=[]){
   const unavailable=unavailableTerms(),blocked=new Set(avoid.filter(Boolean).map(x=>String(x).toLowerCase()));
-  const candidates=mealCandidates('lunch').filter(x=>
-    !blocked.has(String(x).toLowerCase()) &&
-    !unavailable.some(t=>normFood(x).includes(normFood(t)))
-  );
-  if(!candidates.length)return mealCandidates('lunch')[dayIndex%Math.max(mealCandidates('lunch').length,1)]||'Choose a compatible lunch';
-  return candidates[dayIndex%candidates.length]||candidates[0];
+  const all=mealCandidates('lunch').filter(personalMealAllowed);
+  const candidates=all.filter(x=>!blocked.has(String(x).toLowerCase())&&!unavailable.some(t=>normFood(x).includes(normFood(t))));
+  const pool=candidates.length?candidates:all.filter(x=>!blocked.has(String(x).toLowerCase()));
+  return pool.length?(pool[dayIndex%pool.length]||pool[0]):'No compatible prep lunch found — choose a no-cook lunch or adjust food preferences.';
 }
 const NO_COOK_LUNCHES={
   balanced:[
@@ -990,7 +997,6 @@ function noCookLunchCandidates(){
   });
   let usable=ranked.filter(x=>!x.blocked&&!x.unavailable);
   if(!usable.length)usable=ranked.filter(x=>!x.blocked);
-  if(!usable.length)usable=ranked;
   usable.sort((a,b)=>Number(b.fullyAvailable)-Number(a.fullyAvailable)||b.availableCount-a.availableCount||b.score-a.score||a.idx-b.idx);
   return usable.map(x=>x.text);
 }
@@ -999,7 +1005,7 @@ function chooseNoCookLunch(dayIndex,avoid=[]){
   const all=noCookLunchCandidates();
   const choices=all.filter(x=>!blocked.has(String(x).toLowerCase()));
   const pool=choices.length?choices:all;
-  return pool[dayIndex%Math.max(pool.length,1)]||'Protein shake with a compatible no-cook snack';
+  return pool.length?(pool[dayIndex%pool.length]||pool[0]):'No compatible no-cook lunch found — check available groceries or adjust food preferences.';
 }
 function isNoCookLunch(text){return !!noCookLunchRecord(text);}
 async function setDifferentLunchChoice(day,canPrep){
@@ -1069,7 +1075,10 @@ async function migrateNoCookInventoryV71(){
   if(personal?.settings?.no_cook_inventory_v71===true)return;
   let overrides={...leftoverLunchOverrides()},plans={...leftoverPlans()},changed=false;
   for(const [key,x] of Object.entries(overrides)){
-    if(!x||x.choice!=='different-no-cook'||!/rotisserie chicken/i.test(String(x.text||''))||ingredientAvailable('rotisserie-chicken'))continue;
+    if(!x||x.choice!=='different-no-cook')continue;
+    const badPreference=!personalMealAllowed(String(x.text||''));
+    const missingReadyChicken=/rotisserie chicken/i.test(String(x.text||''))&&!ingredientAvailable('rotisserie-chicken');
+    if(!badPreference&&!missingReadyChicken)continue;
     const day=menu().days.findIndex(d=>d.date===x.target_date);
     if(day<0)continue;
     const alternative=chooseNoCookLunch(day,[x.text]);
@@ -1265,11 +1274,14 @@ function mealMeta(slot){
   const s=mealSchedule()[slot];if(!s)return'';
   return [s.time,s.location].filter(Boolean).join(' • ');
 }
-function isMealEnabled(slot){
-  const s=mealSchedule()[slot];if(s&&s.enabled===false)return false;
-  if(personalProfile().intermittent_fasting&&slot==='breakfast')return false;
+function isMealEnabledForPerson(slot,person=myView()){
+  if(person===myView()){
+    const s=mealSchedule()[slot];if(s&&s.enabled===false)return false;
+    if(personalProfile().intermittent_fasting&&slot==='breakfast')return false;
+  }
   return true;
 }
+function isMealEnabled(slot){return isMealEnabledForPerson(slot,myView());}
 function reminderIncomplete(){
   const i=todayIndex(),p=myView();
   const slots=['breakfast','lunch','afternoon','dinner'].filter(isMealEnabled);
@@ -1575,7 +1587,7 @@ function effectivePlanTexts(menuObj=menu()){
     if(d?.flavor_override?.recipe)texts.push(d.flavor_override.recipe);
     if(profileReady()){
       for(const slot of ['breakfast','lunch','afternoon']){
-        if(!isMealEnabled(slot))continue;
+        if(!isMealEnabledForPerson(slot,myView()))continue;
         try{
           const id=`${i}-${myView()}-${slot}`,t=chooseMeal(slot,i,id);
           if(t)texts.push(t);
@@ -1961,6 +1973,7 @@ function prepInstructionForMeal(text,slot='meal'){
 }
 function liveMealTextForPerson(d,slot,i,person=myView()){
   if(slot==='dinner')return d?.dinner||'';
+  if(!isMealEnabledForPerson(slot,person))return '';
   if(person===myView()&&profileReady()){
     try{
       const key=`${i}-${person}-${slot}`,candidate=chooseMeal(slot,i,key);
@@ -2021,22 +2034,36 @@ function renderToday(){
 }
 function rawWeekMealText(d,k){
   if(k==='dinner')return d?.dinner||'';
-  if(ui.view==='Clark')return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
+  if(ui.view==='Clark'){
+    if(k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)return '';
+    return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
+  }
   if(ui.view==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:d?.[k]||'';
-  if(k==='breakfast')return `Clark: ${d?.clark_am||''} | Elizabeth: ${d?.elizabeth_breakfast||''}`;
+  if(k==='breakfast'){
+    if(myView()==='Clark'&&personalProfile().intermittent_fasting)return `Elizabeth: ${d?.elizabeth_breakfast||''}`;
+    if(myView()==='Elizabeth'&&personalProfile().intermittent_fasting)return `Clark: ${d?.clark_am||''}`;
+    return `Clark: ${d?.clark_am||''} | Elizabeth: ${d?.elizabeth_breakfast||''}`;
+  }
   if(k==='afternoon')return `Clark: ${d?.clark_afternoon||''} | Elizabeth: ${d?.elizabeth_snack||''}`;
   return d?.[k]||'';
 }
 function safeWeekMealText(d,i,k){
-  try{return textFor(d,k,i)||rawWeekMealText(d,k);}catch(e){console.error('Week meal render fallback',i,k,e);return rawWeekMealText(d,k);}
+  try{
+    if(ui.view===myView()&&!isMealEnabledForPerson(k,myView()))return '';
+    if(ui.view==='Both')return rawWeekMealText(d,k);
+    return textFor(d,k,i)||rawWeekMealText(d,k);
+  }catch(e){console.error('Week meal render fallback',i,k,e);return rawWeekMealText(d,k);}
 }
 function weekDayCard(d,i){
   const own=ui.view===myView(),person=ui.view==='Both'?myView():ui.view;
   const row=(label,k)=>{
-    const text=safeWeekMealText(d,i,k),noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
+    const text=safeWeekMealText(d,i,k);
+    if(!text)return '';
+    const noCook=own&&k==='lunch'&&(activeLeftoverLunchOverride(i,myView())?.choice==='different-no-cook'||isNoCookLunch(text));
     const canChange=own&&profileReady();
     const button=canChange?`<button class="ghost week-change-meal" data-week-change="${i}" data-week-slot="${k}" data-week-current="${esc(text)}">${k==='dinner'?'Change shared dinner':'Change meal'}</button>`:'';
-    return `<div class="week-meal-row editable"><div><b>${label}</b>${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${button}</div>`;
+    const shownLabel=(ui.view==='Both'&&k==='breakfast'&&myView()==='Clark'&&personalProfile().intermittent_fasting)?'Breakfast — Elizabeth':label;
+    return `<div class="week-meal-row editable"><div><b>${shownLabel}</b>${noCook?'<span class="badge ok-badge">NO COOK</span>':''}</div><span>${esc(text)}</span>${button}</div>`;
   };
   return `<section class="card week-menu-card"><div class="dayhead"><div><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="meta">7-day menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${row('Morning / breakfast','breakfast')}${row('Lunch','lunch')}${row('Afternoon','afternoon')}${row('Dinner','dinner')}<div class="prep"><b>Live prep:</b> ${esc(dayPrepText(d,i,person))}</div></section>`;
 }
@@ -2150,7 +2177,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v71<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v72<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
