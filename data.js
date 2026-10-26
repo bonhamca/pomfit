@@ -22,12 +22,14 @@ export const DEFAULT_DATA = {
     {name:"Balsamic-garlic",best:"Beef, chicken, mushrooms, asparagus, green beans",recipe:"1 Tbsp balsamic + garlic + pepper + olive oil",sodium:"Low"},
     {name:"Chili-lime",best:"Shrimp, tilapia, chicken, asparagus, zucchini",recipe:"Chili powder + cayenne + lime + garlic + olive oil",sodium:"Low"},
     {name:"Parmesan-lemon",best:"Tilapia, sole, asparagus, broccoli, zucchini",recipe:"1–2 Tbsp grated Parmesan + lemon + garlic + pepper; broil to finish",sodium:"Moderate"},
-    {name:"Lemon-butter-caper",best:"Sole, branzino, tilapia, asparagus, green beans",recipe:"1 tsp butter/person + lemon + 1 tsp capers/person + pepper + parsley",sodium:"Moderate"}
+    {name:"Lemon-butter-caper",best:"Sole, branzino, tilapia, asparagus, green beans",recipe:"1 tsp butter/person + lemon + 1 tsp capers/person + pepper + parsley",sodium:"Moderate"},
+    {name:"White wine-lemon herb",best:"Cod, sole, tilapia, salmon, shrimp, asparagus, mushrooms",recipe:"2 Tbsp dry white wine + 1 Tbsp lemon juice + garlic + parsley or dill + black pepper; simmer/reduce briefly before serving",sodium:"Low"},
+    {name:"Red wine-rosemary garlic",best:"Lean beef, steak, mushrooms, green beans",recipe:"2 Tbsp dry red wine + rosemary + garlic + black pepper; simmer/reduce into a light pan sauce",sodium:"Low"}
   ],
   grocery:{
     "Proteins & dairy":["Salmon ~1.25 lb raw","Branzino/sea bass ~1.75–2 lb raw","Boneless skinless chicken ~2 lb raw","Tilapia ~2 lb raw","Lean sirloin/flank steak ~2 lb raw","Sole ~2 lb raw","Catfish ~1.25 lb raw","93% lean ground beef for chili 1.5 lb","All-beef hot dogs 4-pack","Eggs 1 dozen","Swiss cheese 10–12 oz","Milk 1 gallon","Levels Chocolate whey at least 7 servings","Chike Mocha 3–4 servings for Elizabeth"],
     "Produce":["Asparagus 3 bunches","Broccoli 2–3 crowns","Green beans ~2 lb","Zucchini 4 medium","Mushrooms 16 oz","Spinach 10–12 oz","Romaine 2 hearts","Cucumbers 4","Tomatoes 6","Bell peppers 4","Onions 2","Garlic 2 bulbs","Fresh ginger","Lemons 6","Limes 3","Fresh dill","Parsley/cilantro","Avocados 4","Grapefruit 3","Berries 4 pints"],
     "Pantry / frozen":["Frozen peas","No-salt kidney or black beans 2 cans","Low-sodium soy sauce","Worcestershire sauce","Liquid smoke","Harissa","Olive oil","Butter","Optional beef tallow","Capers","Balsamic vinegar","Unsalted pistachios 8 oz","Unsalted pepitas 8 oz","Smoked paprika","Cumin","Turmeric","Chili powder","Coriander","Oregano","Rosemary","Thyme","Cayenne","Black pepper","Parmesan"],
-    "Drinks & optional carbs":["Zero-cal orange/tangerine water 7–12","Coffee and tea","100% orange juice small container (2–4 oz servings inside eating window only)","Whole-grain bread or buns","Optional dry wine or spirits for one planned occasion"]
+    "Drinks & optional carbs":["Zero-cal orange/tangerine water 7–12","Coffee and tea","100% orange juice small container (2–4 oz servings inside eating window only)","Whole-grain bread or buns","Dry white or red wine for cooking (optional)","Optional dry wine or spirits for one planned occasion"]
   }
 };
