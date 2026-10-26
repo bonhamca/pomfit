@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm';
-import { DEFAULT_DATA } from './data.js?v=48';
+import { DEFAULT_DATA } from './data.js?v=49';
 
 const supabase=createClient(
   'https://wbskfggewwlkeplswpan.supabase.co',
@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=48;
+const APP_VERSION=49;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -422,7 +422,7 @@ function renderDrinkPlanner(i){
 function localDateKey(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
 function playBark(){
   try{
-    const audio=new Audio('./Gizmo-bark.mp3?v=48');
+    const audio=new Audio('./Gizmo-bark.mp3?v=49');
     audio.preload='auto';
     audio.volume=.95;
     audio.playbackRate=1;
@@ -1314,7 +1314,7 @@ function renderProfile(){
   </div><button class="primary" id="saveProfileBtn">Save profile</button><div id="profileSaveStatus" class="small" style="margin-top:8px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v48<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v49<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1485,12 +1485,12 @@ function bindDynamic(){
       status.textContent='Save failed: '+e.message;
     }
   };
-  $('[data-whey-flavor]').forEach(sel=>sel.onchange=async()=>{
+  $$('[data-whey-flavor]').forEach(sel=>sel.onchange=async()=>{
     const all={...wheyFlavorPlans()};
     if(sel.value)all[sel.dataset.wheyFlavor]=sel.value;else delete all[sel.dataset.wheyFlavor];
     await saveSettingAtomic('whey_flavors_by_meal',all);
   });
-  $('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-yes]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverYes),d=menu().days[day],nextDay=day+1;
     const plans={...leftoverPlans(),[String(day)]:{use:true,protein:mealProtein(d.dinner),reserve_oz:lunchReserveOz(),saved_at:new Date().toISOString()}};
     const overrides={...mealOverrides(),[`${nextDay}-${myView()}-lunch`]:leftoverLunchText(d.dinner)};
@@ -1498,7 +1498,7 @@ function bindDynamic(){
     await saveSettingAtomic('meal_overrides',overrides);
     render();
   });
-  $('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-leftover-no]').forEach(btn=>btn.onclick=async()=>{
     const day=Number(btn.dataset.leftoverNo),nextDay=day+1,d=menu().days[nextDay];
     if(!d)return;
     const current=textFor(d,'lunch',nextDay),alternative=personalMealReplacement('lunch',current);
@@ -1508,7 +1508,7 @@ function bindDynamic(){
     await saveSettingAtomic('meal_overrides',overrides);
     render();
   });
-  $('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
+  $$('[data-flavor-meal]').forEach(btn=>btn.onclick=async()=>{
     const id=btn.dataset.flavorMeal,slot=btn.dataset.slot,current=btn.dataset.current;
     const day=Number(id.split('-')[0]);
     const d=menu().days[day],existing=flavorOverrideFor(d,day,slot);
@@ -1568,12 +1568,16 @@ function bindDynamic(){
       render();
     }catch(e){syncMsg('Meal swap failed');}
   });
-  $$('[data-drink-type]').forEach(sel=>sel.onchange=e=>{
-    const i=e.target.dataset.drinkType,def=ALCOHOL_DEFAULTS[e.target.value]||ALCOHOL_DEFAULTS.wine;
-    const amount=$('[data-drink-amount="'+i+'"]'),abv=$('[data-drink-abv="'+i+'"]'),mixer=$('[data-drink-mixer="'+i+'"]');
+  $('[data-drink-type]').forEach(sel=>sel.onchange=e=>{
+    const i=e.target.dataset.drinkType,type=e.target.value,def=ALCOHOL_DEFAULTS[type]||ALCOHOL_DEFAULTS.wine;
+    const amount=$('[data-drink-amount="'+i+'"]'),abv=$('[data-drink-abv="'+i+'"]'),mixer=$('[data-drink-mixer="'+i+'"]'),kind=$('[data-drink-kind="'+i+'"]');
     if(amount)amount.value=def.amount;
     if(abv)abv.value=def.abv;
     if(mixer)mixer.value=def.mixer;
+    if(kind){
+      const opts=drinkKindOptions(type,'');
+      kind.innerHTML=opts.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')+'<option value="Other">Other</option>';
+    }
   });
   $$('[data-save-drink]').forEach(btn=>btn.onclick=async()=>{
     const i=btn.dataset.saveDrink;
