@@ -1781,7 +1781,7 @@ function bindDynamic(){
   if($('#todayProfileBtn'))$('#todayProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=()=>checkAndAddFood();
   if($('#foodQuery'))$('#foodQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();checkAndAddFood();}};
-  $('[data-profile-autosave]').forEach(el=>el.onchange=async()=>{
+  $$('[data-profile-autosave]').forEach(el=>el.onchange=async()=>{
     const status=$('#profileAutosaveStatus');
     try{profileFormDirty=true;await saveProfileFormNow(status);}catch(e){if(status){status.textContent='Autosave failed: '+e.message;status.className='small profile-autosave-status save-warn';}}
   });
