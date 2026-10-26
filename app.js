@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=59;
+const APP_VERSION=60;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -1476,17 +1476,24 @@ function nextSharedDinner(current){
   const choices=sharedDinnerAlternatives();
   return choices.find(x=>x!==current) || choices[0];
 }
+function defaultPersonMealText(d,k,person=ui.view){
+  if(k==='dinner')return d?.dinner||'';
+  if(person==='Clark')return k==='breakfast'?d?.clark_am:k==='afternoon'?d?.clark_afternoon:d?.[k]||'';
+  if(person==='Elizabeth')return k==='breakfast'?d?.elizabeth_breakfast:k==='afternoon'?d?.elizabeth_snack:d?.[k]||'';
+  if(k==='breakfast')return `Clark: ${d?.clark_am||''}\nElizabeth: ${d?.elizabeth_breakfast||''}`;
+  if(k==='afternoon')return `Clark: ${d?.clark_afternoon||''}\nElizabeth: ${d?.elizabeth_snack||''}`;
+  return d?.[k]||'';
+}
 function textFor(d,k,i=todayIndex()){
-  if(k==='dinner')return d.dinner;
+  if(k==='dinner')return d?.dinner||'';
   if(ui.view===myView()&&profileReady()){
-    const key=`${i}-${ui.view}-${k}`;
-    return chooseMeal(k,i,key);
+    try{
+      const key=`${i}-${ui.view}-${k}`,candidate=chooseMeal(k,i,key);
+      if(candidate)return candidate;
+    }catch(e){console.error('Personal meal fallback',ui.view,k,i,e);}
+    return defaultPersonMealText(d,k,ui.view);
   }
-  if(ui.view==='Clark')return k==='breakfast'?d.clark_am:k==='afternoon'?d.clark_afternoon:d[k];
-  if(ui.view==='Elizabeth')return k==='breakfast'?d.elizabeth_breakfast:k==='afternoon'?d.elizabeth_snack:d[k];
-  if(k==='breakfast')return `Clark: ${d.clark_am}\nElizabeth: ${d.elizabeth_breakfast}`;
-  if(k==='afternoon')return `Clark: ${d.clark_afternoon}\nElizabeth: ${d.elizabeth_snack}`;
-  return d[k];
+  return defaultPersonMealText(d,k,ui.view);
 }
 function personalFlavorOverrides(){const x=personal?.settings?.meal_flavors;return x&&typeof x==='object'&&!Array.isArray(x)?x:{};}
 function mealFlavorOptions(text){
@@ -1575,17 +1582,22 @@ function scheduledWorkoutOverride(p,i,d){
   if(event.test(nextRaw))return raw;
   return '';
 }
+function defaultWorkoutForPerson(p,d){
+  return p==='Clark'?(d?.workout_c||'Rest / mobility'):(d?.workout_e||'Rest / mobility');
+}
 function plannedWorkoutFor(p,i,d){
-  const fixed=scheduledWorkoutOverride(p,i,d);
-  if(fixed)return fixed;
-  if(p===myView()&&profileReady()){
-    const programmed=programWorkoutForDay(i,d);
-    if(programmed)return programmed;
-    const protection=programProtectionForDay(i,d);
-    if(protection)return protection;
-    return personalWorkoutFor(i);
-  }
-  return p==='Clark'?d.workout_c:d.workout_e;
+  try{
+    const fixed=scheduledWorkoutOverride(p,i,d);
+    if(fixed)return fixed;
+    if(p===myView()&&profileReady()){
+      const programmed=programWorkoutForDay(i,d);
+      if(programmed)return programmed;
+      const protection=programProtectionForDay(i,d);
+      if(protection)return protection;
+      return personalWorkoutFor(i)||defaultWorkoutForPerson(p,d);
+    }
+  }catch(e){console.error('Personal workout fallback',p,i,e);}
+  return defaultWorkoutForPerson(p,d);
 }
 function mealTitle(text){
   const s=String(text||'').replace(/\s+/g,' ').trim();
@@ -1644,12 +1656,17 @@ function dayCard(d,i){
   return `<section class="card"><div class="dayhead"><div><h3>${esc(d.date)}</h3><div class="meta">Shared menu • ${esc(ui.view)} view</div></div>${i===todayIndex()?'<span class="badge">TODAY</span>':''}</div>${meal(d,i,'breakfast','Morning / breakfast')}${meal(d,i,'lunch','Lunch')}${meal(d,i,'afternoon','Afternoon')}${meal(d,i,'dinner','Dinner')}${drink}${w}<div class="prep"><b>Prep:</b> ${esc(dayPrepText(d,i))}</div></section>`;
 }
 function renderToday(){
-  const n=personal?.notes?.free_text||'',summary=profileSummaryText(),gs=grocerySummary();
+  const n=personal?.notes?.free_text||'',idx=todayIndex(),day=(Array.isArray(menu()?.days)?menu().days[idx]:null)||DEFAULT_DATA.days[idx];
+  let summary={diet:'Balanced',goals:'Not selected'},gs={checked:0,total:0,unchecked:0,unavailable:0};
+  try{summary=profileSummaryText();}catch(e){console.error('Profile summary fallback',e);}
+  try{gs=grocerySummary();}catch(e){console.error('Grocery summary fallback',e);}
   const profileCard=ui.view===myView()?`<div class="card profile-status"><div class="dayhead"><div><h3>My Profile — ${esc(myName())}</h3><div class="small"><b>Diet:</b> ${esc(summary.diet)}<br><b>Training:</b> ${esc(summary.goals)}</div></div><span class="badge ${vitalsComplete()?'ok-badge':'warn-badge'}">${vitalsComplete()?'SAVED':'VITALS NEEDED'}</span></div><button class="secondary" id="todayProfileBtn">${vitalsComplete()?'Edit my profile':'Finish age, height & weight'}</button></div>`:'';
   const groceryCard=`<div class="card grocery-readiness"><div class="dayhead"><div><h3>Weekly groceries</h3><div class="small">${gs.checked} of ${gs.total} confirmed${gs.unavailable?` • ${gs.unavailable} unavailable`:''}.</div></div><span class="badge ${gs.unchecked===0&&gs.unavailable===0?'ok-badge':'warn-badge'}">${gs.unchecked===0&&gs.unavailable===0?'READY':'CHECK'}</span></div><p class="small">Are the groceries needed for this week available? Confirm what you have or bought. If something cannot be obtained, mark it Unavailable and PomFit can offer menu changes.</p><button class="secondary" id="weeklyGroceryBtn">Check weekly groceries</button></div>`;
   const hunger=ui.view===myView()?'<div class="card hunger-card"><h3>Still hungry?</h3><p class="small">Get a small add-on that fits your saved diet, dislikes and fasting window.</p><button class="secondary" id="hungerBtn">I’m still hungry — what can I eat?</button><div id="hungerResult"></div></div>':'';
-  const idx=todayIndex(),day=menu().days[idx],energy=renderEnergyDashboard(idx,day);
-  return profileCard+energy+groceryCard+dayCard(day,idx)+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
+  let energy='',todayCard='';
+  try{energy=renderEnergyDashboard(idx,day);}catch(e){console.error('Energy dashboard fallback',e);}
+  try{todayCard=dayCard(day,idx);}catch(e){console.error('Today card fallback',e);todayCard=weekDayCard(day,idx);}
+  return profileCard+energy+groceryCard+todayCard+hunger+`<div class="card"><h3>Private notes</h3><textarea id="notes" class="note" placeholder="Weights, BP, substitutions, workout notes…">${esc(n)}</textarea><p class="small">Only your signed-in account can read these notes.</p></div>`;
 }
 function rawWeekMealText(d,k){
   if(k==='dinner')return d?.dinner||'';
@@ -1715,9 +1732,20 @@ function renderPelotonRoadmap(){
   return `<div class="card peloton-roadmap"><h3>${esc(t.label)} roadmap</h3><p class="small">${p.start_date?'Start date: '+esc(p.start_date)+'. ':'Add a start date in Profile to synchronize calendar dates. '}PomFit reserves these rides first, then places strength/recovery around them.</p>${weeks}</div>`;
 }
 function renderWorkout(){
-  const p=ui.view==='Both'?myView():ui.view,isMe=p===myView();
-  const roadmap=isMe?renderPelotonRoadmap():'';
-  return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Check off each workout when finished.</p>`:'<p class="small">You can view the plan, but only that person can mark a workout complete.</p>'}</div>${roadmap}<div class="weekgrid">${menu().days.map((d,i)=>{const id=`${i}-${p}`,box=isMe?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';const workout=plannedWorkoutFor(p,i,d);const burnLogged=isMe?loggedWorkoutCalories(i,d):null,burnEst=isMe?estimateWorkoutCalories(workout):0;const burn=isMe?`<div class="calorie-log"><label class="small">Calories burned <input class="search" type="number" min="0" step="1" data-workout-calories="${i}" value="${burnLogged??''}" placeholder="~${burnEst}"></label><button class="ghost" data-use-workout-calories="${i}" data-estimate="${burnEst}">Use ~${burnEst}</button></div>`:'';return `<div class="card"><h3>${esc(d.date)}</h3><div class="work">${box}${esc(workout)}${burn}</div></div>`;}).join('')}</div>`;
+  const p=ui.view==='Both'?myView():ui.view,isMe=p===myView(),days=Array.isArray(menu()?.days)?menu().days:DEFAULT_DATA.days;
+  let roadmap='';try{roadmap=isMe?renderPelotonRoadmap():'';}catch(e){console.error('Workout roadmap fallback',e);}
+  const cards=days.map((d,i)=>{
+    try{
+      const id=`${i}-${p}`,box=isMe?`<input class="check" type="checkbox" data-workout-check="${esc(id)}" ${workoutChecks()[id]?'checked':''} aria-label="Mark workout complete">`:'';
+      const workout=plannedWorkoutFor(p,i,d)||defaultWorkoutForPerson(p,d),burnLogged=isMe?loggedWorkoutCalories(i,d):null,burnEst=isMe?estimateWorkoutCalories(workout):0;
+      const burn=isMe?`<div class="calorie-log"><label class="small">Calories burned <input class="search" type="number" min="0" step="1" data-workout-calories="${i}" value="${burnLogged??''}" placeholder="~${burnEst}"></label><button class="ghost" data-use-workout-calories="${i}" data-estimate="${burnEst}">Use ~${burnEst}</button></div>`:'';
+      return `<div class="card"><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="work">${box}${esc(workout)}${burn}</div></div>`;
+    }catch(e){
+      console.error('Workout card fallback',p,i,e);
+      return `<div class="card"><h3>${esc(d?.date||`Day ${i+1}`)}</h3><div class="work">${esc(defaultWorkoutForPerson(p,d))}</div></div>`;
+    }
+  }).join('');
+  return `<div class="card"><h2>${esc(p)} workout</h2>${isMe?`<label class="toggle"><input type="checkbox" id="profileWorkout" ${profile?.workout_enabled!==false?'checked':''}> Workouts ON for ${esc(p)}</label><p class="small">Check off each workout when finished.</p>`:'<p class="small">You can view the plan, but only that person can mark a workout complete.</p>'}</div>${roadmap}<div class="weekgrid">${cards}</div>`;
 }
 function renderProfile(){
   const p=personalProfile(),m=mealSchedule(),goals=workoutGoals(),equipment=equipmentList(),programs=trainingPrograms();
@@ -1739,7 +1767,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v59<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v60<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
