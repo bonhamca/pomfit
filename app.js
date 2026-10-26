@@ -1810,6 +1810,14 @@ function bindDynamic(){
   if($('#notes'))$('#notes').oninput=e=>{clearTimeout(noteTimer);noteTimer=setTimeout(()=>savePersonal({notes:{...(personal.notes||{}),free_text:e.target.value}}),500);};
   if($('#resetG'))$('#resetG').onclick=()=>saveShared({groceries:groceries().map(x=>({...x,checked:false,unavailable:false}))}).then(render);
   if($('#weeklyGroceryBtn'))$('#weeklyGroceryBtn').onclick=()=>{ui.tab='grocery';groceryMode='needs';render();};
+  if($('#syncWeeklyPlanBtn'))$('#syncWeeklyPlanBtn').onclick=async()=>{
+    const status=$('#planSyncStatus');
+    try{await syncWeeklyPlanFromSelections(status);render();}catch(e){if(status){status.textContent='Sync failed: '+e.message;status.className='small save-warn';}}
+  };
+  if($('#repairGroceryBtn'))$('#repairGroceryBtn').onclick=async()=>{
+    const status=$('#planSyncStatus');
+    try{await syncWeeklyPlanFromSelections(status);ui.tab='grocery';groceryMode='all';render();}catch(e){if(status){status.textContent='Repair failed: '+e.message;status.className='small save-warn';}}
+  };
   if($('#shopRemainingBtn'))$('#shopRemainingBtn').onclick=()=>{groceryMode='needs';render();};
   if($('#showAllGroceriesBtn'))$('#showAllGroceriesBtn').onclick=()=>{groceryMode='all';render();};
   if($('#addOnHandGroceryBtn'))$('#addOnHandGroceryBtn').onclick=async()=>{
@@ -1949,12 +1957,17 @@ function bindDynamic(){
     try{profileFormDirty=true;await saveProfileFormNow(status);}catch(e){if(status){status.textContent='Autosave failed: '+e.message;status.className='small profile-autosave-status save-warn';}}
   });
   if($('#saveProfileBtn'))$('#saveProfileBtn').onclick=async()=>{
-    const status=$('#profileSaveStatus');
+    const status=$('#profileSaveStatus'),syncStatusEl=$('#profilePlanSyncStatus');
     try{
       const {next,saved}=await saveProfileFormNow(status);
       const vitalOk=Number(saved.age)===Number(next.age)&&Number(saved.height_in)===Number(next.height_in)&&Number(saved.weight_lb)===Number(next.weight_lb);
       if(status)status.textContent=vitalOk?'Profile saved and verified.':'Profile saved, but age/height/weight did not verify.';
-    }catch(e){if(status)status.textContent='Save failed: '+e.message;}
+      await syncWeeklyPlanFromSelections(syncStatusEl);
+    }catch(e){if(status)status.textContent='Save/sync failed: '+e.message;}
+  };
+  if($('#syncProfilePlanBtn'))$('#syncProfilePlanBtn').onclick=async()=>{
+    const status=$('#profilePlanSyncStatus');
+    try{profileFormDirty=true;await saveProfileFormNow($('#profileSaveStatus'));await syncWeeklyPlanFromSelections(status);}catch(e){if(status){status.textContent='Sync failed: '+e.message;status.className='small save-warn';}}
   };
   $$('[data-whey-flavor]').forEach(sel=>sel.onchange=async()=>{
     const all={...wheyFlavorPlans()};
