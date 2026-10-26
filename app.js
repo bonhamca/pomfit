@@ -9,7 +9,7 @@ const supabase=createClient(
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let session,profile,household,shared,personal,channels=[];
-const APP_VERSION=60;
+const APP_VERSION=61;
 let ui={view:'Clark',tab:'today'};
 let groceryMode='all';
 let profileFormDirty=false;
@@ -534,7 +534,7 @@ const FOOD_GROUPS={
   starchy:['potato','potatoes','sweet potato','sweet potatoes','yam','yams'],
   sweets:['sugar','candy','cookie','cookies','cake','brownie','ice cream','dessert','donut','doughnut','syrup','honey'],
   nuts:['pistachios','almonds','walnuts','pecans','macadamia','peanuts','peanut butter','nuts','pepitas','pumpkin seeds','seeds'],
-  vegetables:['asparagus','broccoli','cauliflower','spinach','zucchini','green beans','mushrooms','tomato','tomatoes','cucumber','lettuce','romaine','greens','peppers','bell peppers','onion','onions','celery','cabbage','kale','eggplant'],
+  vegetables:['asparagus','broccoli','cauliflower','spinach','zucchini','green beans','mushrooms','mushroom','tomato','tomatoes','cucumber','lettuce','romaine','greens','peppers','bell peppers','onion','onions','celery','cabbage','kale','eggplant','carrot','carrots','radish','radishes','artichoke','artichokes','squash','okra'],
   fats:['olive oil','avocado','olives','tallow']
 };
 function normalizeFoodName(v){return String(v||'').trim().toLowerCase().replace(/\s+/g,' ');}
@@ -1757,7 +1757,7 @@ function renderProfile(){
   <div class="metric"><b>Basics & weight goal</b><label class="small">Age <input id="profAge" class="search" type="number" min="18" max="100" value="${esc(p.age??'')}"></label><div class="height-row"><label class="small">Height feet <input id="profHeightFt" class="search" type="number" min="4" max="7" value="${esc(profileHeightParts().ft)}"></label><label class="small">Height inches <input id="profHeightIn" class="search" type="number" min="0" max="11.9" step=".1" value="${esc(profileHeightParts().inch)}"></label></div><label class="small">Current weight (lb) <input id="profWeight" class="search" type="number" min="70" max="600" step=".1" value="${esc(p.weight_lb??'')}"></label><label class="small">Goal weight (lb) <input id="profGoalWeight" data-profile-autosave class="search" type="number" min="70" max="600" step=".1" value="${esc(p.goal_weight_lb??'')}"></label><label class="small">Daily protein target override (g, optional) <input id="profProteinTarget" data-profile-autosave class="search" type="number" min="40" max="400" step="1" value="${esc(p.protein_target_g??'')}" placeholder="Automatic if blank"></label><div id="profileAutosaveStatus" class="small profile-autosave-status">Goal and calorie-target fields save automatically when changed.</div></div>
   <div class="metric"><b>Calorie target setup</b><label class="small">Calorie-equation sex <select id="calorieSex" data-profile-autosave class="search"><option value="">Select</option><option value="male" ${p.calorie_equation_sex==='male'?'selected':''}>Male</option><option value="female" ${p.calorie_equation_sex==='female'?'selected':''}>Female</option><option value="neutral" ${p.calorie_equation_sex==='neutral'?'selected':''}>Neutral midpoint estimate</option></select></label><label class="small">Normal daily activity outside workouts <select id="baselineActivity" data-profile-autosave class="search"><option value="sedentary" ${p.baseline_activity==='sedentary'?'selected':''}>Mostly sitting</option><option value="light" ${(p.baseline_activity||'light')==='light'?'selected':''}>Light movement</option><option value="moderate" ${p.baseline_activity==='moderate'?'selected':''}>Moderately active / on feet</option><option value="active" ${p.baseline_activity==='active'?'selected':''}>Very active outside workouts</option></select></label><label class="small">Desired weight-change pace <select id="goalRate" data-profile-autosave class="search"><option value="0" ${Number(p.goal_rate_lb_week)===0?'selected':''}>Maintain / no calorie adjustment</option><option value=".25" ${Number(p.goal_rate_lb_week)===.25?'selected':''}>0.25 lb/week</option><option value=".5" ${Number(p.goal_rate_lb_week??.5)===.5?'selected':''}>0.5 lb/week</option><option value="1" ${Number(p.goal_rate_lb_week)===1?'selected':''}>1 lb/week</option></select></label><div class="small">Diet style affects meal choices; calorie target is based on body size, daily activity, goal direction, and workout energy. PomFit floors calculated targets at 1,200 kcal/day and labels them as estimates.</div></div>
   <div class="metric"><b>Diet style</b><select id="dietStyle" class="search"><option value="balanced">Balanced</option><option value="performance">Athletic performance</option><option value="musclegain">Muscle gain / high protein</option><option value="mediterranean">Mediterranean</option><option value="lowcarb">Low carb</option><option value="keto">Keto</option><option value="pescatarian">Pescatarian</option><option value="vegetarian">Vegetarian</option></select><div class="small" style="margin-top:6px">Athletic performance emphasizes protein plus enough carbohydrate to support training. Muscle gain uses a higher-protein, recovery-focused pattern with adequate calories.</div></div>
-  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check a food against this diet</div><input id="foodQuery" class="search" placeholder="e.g. sweet potato, shrimp, oatmeal"><button class="secondary" id="checkFoodBtn">Check & add food</button><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div></div>
+  <div class="metric"><b>Foods</b><label class="small">Foods I like <input id="foodLikes" class="search" value="${esc(p.food_likes||'')}" placeholder="salmon, asparagus, berries"></label><label class="small">Foods I don't like <input id="foodDislikes" class="search" value="${esc(p.food_dislikes||'')}" placeholder="eggs, yogurt, broccoli"></label><div class="divider">Check or add a food</div><input id="foodQuery" class="search" list="foodQueryOptions" placeholder="e.g. sweet potato, shrimp, oatmeal"><datalist id="foodQueryOptions">${[...new Set(Object.values(FOOD_GROUPS).flat())].sort().map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div class="food-check-actions"><button class="secondary" id="checkFoodBtn">Check food</button><button class="primary" id="addFoodLikeBtn">Add to Foods I like</button></div><div id="foodQueryResult" class="food-check-result" role="status" aria-live="polite"></div><div class="small">Checking tells you whether the food fits the selected diet. Adding saves your preference even if PomFit warns that the food is limited, incompatible with the current diet, or not yet recognized.</div></div>
   <div class="metric"><b>Intermittent fasting</b><label class="toggle"><input id="ifToggle" type="checkbox" ${p.intermittent_fasting?'checked':''}> Use intermittent fasting</label><label class="small">Eating window start <input id="ifStart" type="time" value="${esc(p.fasting_start||'12:00')}"></label><label class="small">Eating window end <input id="ifEnd" type="time" value="${esc(p.fasting_end||'20:00')}"></label></div>
   <div class="metric"><b>Workout goals</b><div class="controls">${goal('sculpt','Sculpt / tone')}${goal('strength','Strength without bulk')}${goal('muscle','Muscle building / hypertrophy')}${goal('cardio','Cardio fitness')}${goal('hiit','HIIT / conditioning')}${goal('mobility','Mobility / flexibility')}${goal('core','Core / posture')}</div></div>
   <div class="metric"><b>Sport / event preparation</b><div class="controls">${goal('ski','Skiing')}${goal('cycling','Cycling')}${goal('running','Running')}${goal('tennis','Tennis')}${goal('boxing','Boxing')}${goal('swimming','Swimming')}${goal('soccer','Soccer')}${goal('basketball','Basketball')}</div></div>
@@ -1767,7 +1767,7 @@ function renderProfile(){
   </div><div class="profile-save-actions"><button class="primary" id="saveProfileBtn">Save profile & sync weekly plan</button><button class="secondary" id="syncProfilePlanBtn">Sync menu, prep & groceries</button></div><div id="profileSaveStatus" class="small" style="margin-top:8px"></div><div id="profilePlanSyncStatus" class="small" style="margin-top:6px"></div></div>`;
 }
 function renderAccount(){
-  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v60<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
+  return `<div class="card"><h2>Account & household</h2><div class="account-grid"><div class="metric"><b>Signed in as</b>${esc(myName())}<div class="small">${esc(session.user.email)}</div><button class="secondary" id="editProfileBtn">Edit my profile</button></div><div class="metric"><b>Name your Pom</b><input id="pomNameInput" class="search" maxlength="20" value="${esc(pomName())}" placeholder="Gizmo"><div class="small">This is your personal Pom name. PomFit remains the app name.</div></div><div class="metric"><b>Bark reminder</b><label class="toggle"><input type="checkbox" id="barkReminderToggle" ${barkEnabled()?'checked':''}> Bark if today's meals or workout are incomplete</label><label class="small">Reminder time <input id="barkReminderTime" type="time" value="${esc(barkTime())}"></label><button class="ghost" id="testBarkBtn">Test ${esc(pomName())}'s bark</button><div class="small">Off by default. Bark works while PomFit is open or brought to the foreground.</div></div><div class="metric"><b>Household</b>${esc(household?.name||'')}</div><div class="metric"><b>Join code</b><div class="invite">${esc(household?.invite_code||'')}</div><div class="small">Use this code for another household member.</div></div><div class="metric"><b>App tour</b><button class="secondary" id="replayTourBtn">Replay app tour</button><div class="small">Gizmo will walk through Profile, meals, workouts, shared tools and reminders.</div></div><div class="metric"><b>App version</b>PomFit v61<div class="small">Use “Update PomFit” whenever you want to refresh to the newest published build.</div></div></div><button class="secondary" id="updateAppBtn">Update PomFit</button><button class="ghost" id="signOutBtn">Sign out</button></div>`;
 }
 function render(){
   if(!shared)return;
@@ -1823,30 +1823,53 @@ async function saveProfileFormNow(statusEl){
   }
   return {next,saved,ok};
 }
-async function checkAndAddFood(){
+function showFoodCheckResult(food,diet){
+  const out=$('#foodQueryResult');
+  if(!out)return null;
+  if(!food){
+    out.className='food-check-result status-warn';
+    out.innerHTML='<b>ENTER A FOOD</b><span>Type or select a food first.</span>';
+    return null;
+  }
+  const result=foodCompatibility(food,diet);
+  const labels={yes:'✓ FITS DIET',limited:'△ LIMITED',no:'✕ DOES NOT FIT CURRENT DIET',unknown:'? NOT YET CATEGORIZED'};
+  out.className='food-check-result status-'+result.status;
+  out.innerHTML=`<b>${esc(labels[result.status]||'CHECK')}</b><span>${esc(result.message)}</span>`;
+  return result;
+}
+function checkFoodOnly(){
+  const input=$('#foodQuery'),dietEl=$('#dietStyle');
+  if(!input||!dietEl)return;
+  showFoodCheckResult(String(input.value||'').trim(),dietEl.value);
+}
+async function addFoodToLikes(){
   const input=$('#foodQuery'),dietEl=$('#dietStyle'),out=$('#foodQueryResult'),likesEl=$('#foodLikes');
   if(!input||!dietEl||!out||!likesEl)return;
   const food=String(input.value||'').trim(),diet=dietEl.value;
-  if(!food){out.className='food-check-result status-warn';out.textContent='Enter a food to check.';return;}
-  const result=foodCompatibility(food,diet);
-  const labels={yes:'✓ OK',limited:'△ LIMITED',no:'✕ NOT COMPATIBLE',unknown:'? NEEDS REVIEW'};
-  out.className='food-check-result status-'+result.status;
-  out.innerHTML=`<b>${esc(labels[result.status]||'CHECK')}</b><span>${esc(result.message)}</span>`;
-  if(result.status!=='yes')return;
+  if(!food){showFoodCheckResult('',diet);return;}
+  const result=showFoodCheckResult(food,diet)||{status:'unknown',message:''};
   const existing=likesEl.value.split(',').map(x=>x.trim()).filter(Boolean);
-  if(!existing.some(x=>x.toLowerCase()===food.toLowerCase()))existing.push(food);
+  const already=existing.some(x=>x.toLowerCase()===food.toLowerCase());
+  if(!already)existing.push(food);
   likesEl.value=existing.join(', ');
   try{
     profileFormDirty=true;
     const next={...collectProfileForm(),diet_style:diet,food_likes:likesEl.value.trim()};
     await saveProfileAtomic(next);
-    const savedLikes=String(personalProfile().food_likes||'').toLowerCase();
-    const saved=savedLikes.split(',').map(x=>x.trim()).includes(food.toLowerCase());
-    out.className='food-check-result '+(saved?'status-yes':'status-warn');
-    out.innerHTML=saved
-      ?`<b>✓ OK — ADDED</b><span>${esc(result.message)} Saved to Foods I like.</span>`
-      :`<b>△ SAVE NOT VERIFIED</b><span>The food is compatible, but PomFit could not verify that it was saved.</span>`;
-    if(saved)input.value='';
+    const savedLikes=String(personalProfile().food_likes||'').split(',').map(x=>x.trim().toLowerCase());
+    const saved=savedLikes.includes(food.toLowerCase());
+    if(!saved)throw new Error('PomFit could not verify the saved preference.');
+    await syncWeeklyPlanFromSelections($('#profilePlanSyncStatus'));
+    const note=result.status==='yes'
+      ?'It fits the current diet.'
+      :result.status==='limited'
+        ?'It is saved as a preference, but PomFit will use it cautiously with the current diet.'
+        :result.status==='no'
+          ?'It is saved as a preference, but PomFit will not use it in meals that conflict with the current diet.'
+          :'It is saved as a preference. PomFit has not categorized this food yet.';
+    out.className='food-check-result status-yes';
+    out.innerHTML=`<b>${already?'✓ ALREADY SAVED':'✓ ADDED'}</b><span>${esc(food)} is in Foods I like. ${esc(note)}</span>`;
+    input.value='';
   }catch(e){
     out.className='food-check-result status-no';
     out.innerHTML=`<b>✕ SAVE FAILED</b><span>${esc(e.message||'Unknown save error')}</span>`;
@@ -2006,8 +2029,9 @@ function bindDynamic(){
   };
   if($('#editProfileBtn'))$('#editProfileBtn').onclick=()=>{ui.tab='profile';render();};
   if($('#todayProfileBtn'))$('#todayProfileBtn').onclick=()=>{ui.tab='profile';render();};
-  if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=()=>checkAndAddFood();
-  if($('#foodQuery'))$('#foodQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();checkAndAddFood();}};
+  if($('#checkFoodBtn'))$('#checkFoodBtn').onclick=()=>checkFoodOnly();
+  if($('#addFoodLikeBtn'))$('#addFoodLikeBtn').onclick=()=>addFoodToLikes();
+  if($('#foodQuery'))$('#foodQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();checkFoodOnly();}};
   $$('[data-profile-autosave]').forEach(el=>el.onchange=async()=>{
     const status=$('#profileAutosaveStatus');
     try{profileFormDirty=true;await saveProfileFormNow(status);}catch(e){if(status){status.textContent='Autosave failed: '+e.message;status.className='small profile-autosave-status save-warn';}}
