@@ -24,7 +24,8 @@ export const DEFAULT_DATA = {
     {name:"Parmesan-lemon",best:"Tilapia, sole, asparagus, broccoli, zucchini",recipe:"1–2 Tbsp grated Parmesan + lemon + garlic + pepper; broil to finish",sodium:"Moderate"},
     {name:"Lemon-butter-caper",best:"Sole, branzino, tilapia, asparagus, green beans",recipe:"1 tsp butter/person + lemon + 1 tsp capers/person + pepper + parsley",sodium:"Moderate"},
     {name:"White wine-lemon herb",best:"Cod, sole, tilapia, salmon, shrimp, asparagus, mushrooms",recipe:"2 Tbsp dry white wine + 1 Tbsp lemon juice + garlic + parsley or dill + black pepper; simmer/reduce briefly before serving",sodium:"Low"},
-    {name:"Red wine-rosemary garlic",best:"Lean beef, steak, mushrooms, green beans",recipe:"2 Tbsp dry red wine + rosemary + garlic + black pepper; simmer/reduce into a light pan sauce",sodium:"Low"}
+    {name:"Red wine-rosemary garlic",best:"Lean beef, steak, mushrooms, green beans",recipe:"2 Tbsp dry red wine + rosemary + garlic + black pepper; simmer/reduce into a light pan sauce",sodium:"Low"},
+    {name:"Lemon curry butter",best:"Cod, sole, tilapia, shrimp, chicken, asparagus, green beans",recipe:"1 tsp butter/person + 1/2 tsp curry powder + 1 Tbsp lemon juice + 1/2 tsp lemon zest + garlic + black pepper; melt gently and spoon over after cooking",sodium:"Low"}
   ],
   grocery:{
     "Proteins & dairy":["Salmon ~1.25 lb raw","Branzino/sea bass ~1.75–2 lb raw","Boneless skinless chicken ~2 lb raw","Tilapia ~2 lb raw","Lean sirloin/flank steak ~2 lb raw","Sole ~2 lb raw","Catfish ~1.25 lb raw","93% lean ground beef for chili 1.5 lb","All-beef hot dogs 4-pack","Eggs 1 dozen","Swiss cheese 10–12 oz","Milk 1 gallon","Levels Chocolate whey at least 7 servings","Chike Mocha 3–4 servings for Elizabeth"],
