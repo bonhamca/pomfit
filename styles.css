@@ -381,3 +381,7 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 
 .portion-guide{margin:.45rem 0 .6rem;padding:.55rem .65rem;border-radius:10px;background:var(--soft);line-height:1.35}
 .recipe-scale-note{margin-top:-.25rem}
+
+.gap-options,.calorie-gap-card{display:grid;gap:8px}
+.gap-option{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:.55rem .65rem;border-radius:10px;background:var(--soft)}
+.gap-option>div{min-width:0}
