@@ -378,3 +378,6 @@ nav button.active{background:var(--green-dark);color:#fff;box-shadow:0 4px 12px 
 .bug-report-form .note.compact{min-height:80px}
 .actual-macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
 @media(max-width:560px){.actual-macro-grid{grid-template-columns:1fr}}
+
+.portion-guide{margin:.45rem 0 .6rem;padding:.55rem .65rem;border-radius:10px;background:var(--soft);line-height:1.35}
+.recipe-scale-note{margin-top:-.25rem}
